@@ -1,0 +1,5 @@
+{
+  "name": "BUBBLES Laundry",
+  "description": "Premium laundry service in Chitungwiza, Zimbabwe. Order pickups, track your laundry status, and enjoy special Saturday discounts.",
+  "requestFramePermissions": ["geolocation"]
+}
