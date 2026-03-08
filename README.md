@@ -1,3 +1,7 @@
+<div align="center">
+<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+</div>
+
 # BUBBLES Laundry
 
 > Premium laundry service in Chitungwiza, Zimbabwe. Order pickups, track your laundry status, and enjoy special Saturday discounts.
@@ -186,6 +190,6 @@ This project is private and proprietary. All rights reserved.
 ---
 
 <div align="center">
-  Made with ❤️ in Tanzania, Africa
+  Made with ❤️ in Chitungwiza, Zimbabwe
 </div>
 
