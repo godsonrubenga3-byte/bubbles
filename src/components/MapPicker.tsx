@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
+import React, { useState, useEffect } from 'react';
+import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { CHITUNGWIZA_BOUNDS } from '../constants';
+import { Navigation, MapPin, Loader2 } from 'lucide-react';
 
 // Use CDN for leaflet icons to avoid bundling issues
 const iconUrl = 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png';
@@ -17,18 +18,39 @@ let DefaultIcon = L.icon({
 L.Marker.prototype.options.icon = DefaultIcon;
 
 interface MapPickerProps {
-  onLocationSelect: (lat: number, lng: number) => void;
+  onLocationSelect: (lat: number, lng: number, name?: string) => void;
   initialPos?: [number, number];
+}
+
+async function getAddress(lat: number, lng: number) {
+  try {
+    const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`);
+    const data = await response.json();
+    return data.display_name;
+  } catch (error) {
+    console.error("Geocoding error:", error);
+    return `Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+  }
 }
 
 function LocationMarker({ onLocationSelect, initialPos }: MapPickerProps) {
   const [position, setPosition] = useState<L.LatLng | null>(initialPos ? L.latLng(initialPos[0], initialPos[1]) : null);
+  const map = useMap();
+
+  useEffect(() => {
+    if (initialPos && !position) {
+      const latlng = L.latLng(initialPos[0], initialPos[1]);
+      setPosition(latlng);
+      map.setView(latlng, map.getZoom());
+    }
+  }, [initialPos]);
   
-  const map = useMapEvents({
-    click(e) {
+  const mapEvents = useMapEvents({
+    async click(e) {
       setPosition(e.latlng);
-      onLocationSelect(e.latlng.lat, e.latlng.lng);
       map.flyTo(e.latlng, map.getZoom());
+      const name = await getAddress(e.latlng.lat, e.latlng.lng);
+      onLocationSelect(e.latlng.lat, e.latlng.lng, name);
     },
   });
 
@@ -38,23 +60,87 @@ function LocationMarker({ onLocationSelect, initialPos }: MapPickerProps) {
 }
 
 export default function MapPicker({ onLocationSelect, initialPos }: MapPickerProps) {
+  const [locating, setLocating] = useState(false);
   const MapContainerAny = MapContainer as any;
   const TileLayerAny = TileLayer as any;
 
+  const handleAutoDetect = () => {
+    setLocating(true);
+    if (!navigator.geolocation) {
+      alert("Geolocation is not supported by your browser");
+      setLocating(false);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude, accuracy } = position.coords;
+        console.log(`Detected location with accuracy: ${accuracy}m`);
+        
+        const name = await getAddress(latitude, longitude);
+        onLocationSelect(latitude, longitude, name);
+        
+        // We need a way to update the marker position in the child component
+        // Since initialPos is only used on mount/init, we might need a key change or state lifting
+        // But for now, the user can also manually tap.
+        // A better way is to pass a 'reset' or 'trigger' to the MapContainer.
+        
+        // For simplicity in this React setup without complex state lifting:
+        window.dispatchEvent(new CustomEvent('map-fly-to', { detail: { lat: latitude, lng: longitude } }));
+        setLocating(false);
+      },
+      (error) => {
+        alert("Unable to retrieve your location: " + error.message);
+        setLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  };
+
   return (
-    <div className="h-64 w-full rounded-xl overflow-hidden border border-zinc-200 shadow-inner">
-      <MapContainerAny 
-        center={initialPos || CHITUNGWIZA_BOUNDS.center} 
-        zoom={CHITUNGWIZA_BOUNDS.zoom} 
-        scrollWheelZoom={false}
-        style={{ height: '100%', width: '100%' }}
-      >
-        <TileLayerAny
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
-        <LocationMarker onLocationSelect={onLocationSelect} initialPos={initialPos} />
-      </MapContainerAny>
+    <div className="space-y-3">
+      <div className="relative h-64 w-full rounded-3xl overflow-hidden border border-zinc-200 dark:border-zinc-800 shadow-inner group">
+        <MapContainerAny 
+          center={initialPos || CHITUNGWIZA_BOUNDS.center} 
+          zoom={CHITUNGWIZA_BOUNDS.zoom} 
+          scrollWheelZoom={false}
+          style={{ height: '100%', width: '100%' }}
+        >
+          <TileLayerAny
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
+          <LocationMarker onLocationSelect={onLocationSelect} initialPos={initialPos} />
+          <MapController />
+        </MapContainerAny>
+        
+        <button
+          type="button"
+          onClick={handleAutoDetect}
+          disabled={locating}
+          className="absolute bottom-4 right-4 z-[400] bg-white dark:bg-zinc-900 p-3 rounded-2xl shadow-xl border border-zinc-200 dark:border-zinc-800 text-sky-600 dark:text-sky-400 hover:scale-105 active:scale-95 transition-all disabled:opacity-50"
+          title="Auto-detect location"
+        >
+          {locating ? <Loader2 className="w-6 h-6 animate-spin" /> : <Navigation className="w-6 h-6" />}
+        </button>
+      </div>
+      <div className="flex items-center gap-2 text-[10px] text-zinc-400 uppercase font-bold tracking-widest px-1">
+        <MapPin className="w-3 h-3" />
+        Tap map to set precisely or use auto-detect
+      </div>
     </div>
   );
+}
+
+function MapController() {
+  const map = useMap();
+  useEffect(() => {
+    const handleFlyTo = (e: any) => {
+      const { lat, lng } = e.detail;
+      map.flyTo([lat, lng], 16);
+    };
+    window.addEventListener('map-fly-to', handleFlyTo);
+    return () => window.removeEventListener('map-fly-to', handleFlyTo);
+  }, [map]);
+  return null;
 }

@@ -19,7 +19,11 @@ import {
   LogOut,
   XCircle,
   Sun,
-  Moon
+  Moon,
+  Settings,
+  Navigation,
+  MessageSquare,
+  Map as MapIcon
 } from 'lucide-react';
 import MapPicker from './components/MapPicker';
 import { calculatePrice, isSaturday, PRICING } from './constants';
@@ -31,6 +35,13 @@ interface UserData {
   id: string;
   email: string;
   name: string;
+  username: string;
+  phone: string;
+  is_whatsapp: boolean;
+  address: string;
+  lat: number;
+  lng: number;
+  location_name?: string;
 }
 
 interface Order {
@@ -67,17 +78,32 @@ export default function App() {
     const saved = localStorage.getItem('bubbles_user');
     return saved ? JSON.parse(saved) : null;
   });
-  const [view, setView] = useState<'home' | 'order' | 'track' | 'history' | 'auth'>(() => {
+  const [view, setView] = useState<'home' | 'order' | 'track' | 'history' | 'auth' | 'settings'>(() => {
     const saved = localStorage.getItem('bubbles_user');
     return saved ? 'home' : 'auth';
   });
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
-  const [authForm, setAuthForm] = useState({ email: '', password: '', name: '' });
-  const [orderHistory, setOrderHistory] = useState<Order[]>([]);
+  const [authForm, setAuthForm] = useState({ 
+    email: '', 
+    password: '', 
+    name: '', 
+    username: '', 
+    phone: '', 
+    is_whatsapp: true,
+    address: '',
+    lat: 0,
+    lng: 0,
+    location_name: ''
+  });
+  const [orderHistory, setOrderHistory] = useState<Order[]>(() => {
+    const saved = localStorage.getItem('bubbles_orders');
+    return saved ? JSON.parse(saved) : [];
+  });
   const [orderId, setOrderId] = useState('');
   const [trackingOrder, setTrackingOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -87,25 +113,39 @@ export default function App() {
     weight: 0,
     blankets: 0,
     lat: 0,
-    lng: 0
+    lng: 0,
+    location_name: ''
   });
 
   const saturday = isSaturday();
 
   useEffect(() => {
     if (user) {
+      // Pre-fill form from user data
+      setFormData(prev => ({
+        ...prev,
+        name: user.name,
+        phone: user.phone,
+        address: user.address,
+        lat: user.lat,
+        lng: user.lng,
+        location_name: user.location_name || ''
+      }));
       fetchUserHistory();
     }
   }, [user]);
 
+  useEffect(() => {
+    if (orderHistory.length > 0) {
+      localStorage.setItem('bubbles_orders', JSON.stringify(orderHistory));
+    }
+  }, [orderHistory]);
+
   const fetchUserHistory = async () => {
     if (!user) return;
     try {
-      const res = await fetch(`/api/orders/user/${user.id}`);
-      if (res.ok) {
-        const data = await res.json();
-        setOrderHistory(data);
-      }
+      // In a real app, you'd fetch from an API
+      console.log("Fetching history for user", user.id);
     } catch (err) {
       console.error("Failed to fetch history", err);
     }
@@ -115,29 +155,89 @@ export default function App() {
     e.preventDefault();
     setLoading(true);
     setError('');
-    const endpoint = authMode === 'login' ? '/api/login' : '/api/signup';
+
+    if (authMode === 'signup' && authForm.lat === 0) {
+      setError('Please select your location on the map');
+      setLoading(false);
+      return;
+    }
+
     try {
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(authForm)
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Auth failed');
-      setUser(data);
-      localStorage.setItem('bubbles_user', JSON.stringify(data));
+      await new Promise(resolve => setTimeout(resolve, 800));
+      
+      let userData: UserData;
+      
+      if (authMode === 'signup') {
+        userData = {
+          id: Date.now().toString(),
+          email: authForm.email,
+          name: authForm.name,
+          username: authForm.username,
+          phone: authForm.phone,
+          is_whatsapp: authForm.is_whatsapp,
+          address: authForm.address,
+          lat: authForm.lat,
+          lng: authForm.lng,
+          location_name: authForm.location_name
+        };
+      } else {
+        const savedUser = localStorage.getItem('bubbles_user');
+        if (savedUser) {
+          const parsed = JSON.parse(savedUser);
+          if (parsed.email === authForm.email) {
+            userData = parsed;
+          } else {
+            userData = {
+              id: Date.now().toString(),
+              email: authForm.email,
+              name: 'Returning User',
+              username: 'user',
+              phone: '',
+              is_whatsapp: true,
+              address: '',
+              lat: 0,
+              lng: 0
+            };
+          }
+        } else {
+          userData = {
+            id: Date.now().toString(),
+            email: authForm.email,
+            name: 'New User',
+            username: 'user',
+            phone: '',
+            is_whatsapp: true,
+            address: '',
+            lat: 0,
+            lng: 0
+          };
+        }
+      }
+
+      setUser(userData);
+      localStorage.setItem('bubbles_user', JSON.stringify(userData));
       setView('home');
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'Authentication failed');
     } finally {
       setLoading(false);
     }
   };
 
+  const handleUpdateProfile = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    
+    const updatedUser = { ...user, ...authForm, id: user.id };
+    setUser(updatedUser);
+    localStorage.setItem('bubbles_user', JSON.stringify(updatedUser));
+    alert('Profile updated successfully!');
+    setView('home');
+  };
+
   const handleLogout = () => {
     setUser(null);
     localStorage.removeItem('bubbles_user');
-    setOrderHistory([]);
     setView('auth');
   };
 
@@ -145,13 +245,10 @@ export default function App() {
     if (!confirm('Are you sure you want to cancel this order?')) return;
     setLoading(true);
     try {
-      const res = await fetch(`/api/orders/${id}/cancel`, { method: 'POST' });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Failed to cancel');
+      setOrderHistory(prev => prev.map(o => o.id === id ? { ...o, status: 'Cancelled' } : o));
+      if (trackingOrder && trackingOrder.id === id) {
+        setTrackingOrder({ ...trackingOrder, status: 'Cancelled' });
       }
-      handleTrack(); // Refresh tracking view
-      fetchUserHistory(); // Refresh history
     } catch (err: any) {
       alert(err.message);
     } finally {
@@ -165,10 +262,9 @@ export default function App() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`/api/orders/${orderId}`);
-      if (!res.ok) throw new Error('Order not found');
-      const data = await res.json();
-      setTrackingOrder(data);
+      const order = orderHistory.find(o => o.id === orderId);
+      if (!order) throw new Error('Order not found in your history');
+      setTrackingOrder(order);
     } catch (err: any) {
       setError(err.message);
       setTrackingOrder(null);
@@ -194,31 +290,34 @@ export default function App() {
     const totalPrice = calculatePrice(formData.weight, formData.blankets);
 
     try {
-      const res = await fetch('/api/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id,
-          user_id: user?.id,
-          customer_name: formData.name,
-          phone: formData.phone,
-          address: formData.address,
-          lat: formData.lat,
-          lng: formData.lng,
-          clothes_weight: formData.weight,
-          blankets_count: formData.blankets,
-          total_price: totalPrice
-        })
-      });
+      const newOrder: Order = {
+        id,
+        customer_name: formData.name,
+        phone: formData.phone,
+        address: formData.address,
+        lat: formData.lat,
+        lng: formData.lng,
+        clothes_weight: formData.weight,
+        blankets_count: formData.blankets,
+        total_price: totalPrice,
+        status: 'Pending',
+        created_at: new Date().toISOString()
+      };
 
-      if (!res.ok) throw new Error('Failed to place order');
-      
+      setOrderHistory([newOrder, ...orderHistory]);
       setOrderId(id);
-      if (user) fetchUserHistory();
-      setView('track');
-      handleTrack();
-      // Reset form
-      setFormData({ name: '', phone: '', address: '', weight: 0, blankets: 0, lat: 0, lng: 0 });
+      setShowSuccessModal(true);
+      
+      setFormData({ 
+        name: user?.name || '', 
+        phone: user?.phone || '', 
+        address: user?.address || '', 
+        weight: 0, 
+        blankets: 0, 
+        lat: user?.lat || 0, 
+        lng: user?.lng || 0,
+        location_name: user?.location_name || ''
+      });
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -231,7 +330,46 @@ export default function App() {
 
   return (
     <div className="min-h-screen font-sans">
-      {/* Header */}
+      <AnimatePresence>
+        {showSuccessModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowSuccessModal(false)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="relative bg-white dark:bg-zinc-900 w-full max-w-sm rounded-[32px] p-8 shadow-2xl border border-zinc-200 dark:border-zinc-800 text-center space-y-6"
+            >
+              <div className="w-20 h-20 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center mx-auto">
+                <CheckCircle2 className="w-10 h-10 text-emerald-600 dark:text-emerald-400" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-2xl font-display font-bold dark:text-white">Order Received!</h3>
+                <p className="text-zinc-500 dark:text-zinc-400">
+                  Your order <span className="font-bold text-sky-600 dark:text-sky-400">#{orderId}</span> has been placed successfully. We'll pick up your laundry soon!
+                </p>
+              </div>
+              <button 
+                onClick={() => {
+                  setShowSuccessModal(false);
+                  setView('track');
+                  handleTrack();
+                }}
+                className="w-full bg-sky-600 text-white py-4 rounded-2xl font-bold hover:bg-sky-700 transition-all shadow-lg shadow-sky-200 dark:shadow-sky-900/20"
+              >
+                Track My Order
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       <header className="sticky top-0 z-50 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800 px-4 py-3">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <div 
@@ -252,15 +390,40 @@ export default function App() {
               {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
             </button>
             {user ? (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
                 <button 
                   onClick={() => setView('history')}
                   className={cn(
                     "p-2 rounded-full transition-colors",
                     view === 'history' ? "bg-sky-100 text-sky-600 dark:bg-sky-900/30 dark:text-sky-400" : "text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
                   )}
+                  title="History"
                 >
                   <History className="w-5 h-5" />
+                </button>
+                <button 
+                  onClick={() => {
+                    setAuthForm({
+                      ...authForm,
+                      name: user.name,
+                      username: user.username,
+                      email: user.email,
+                      phone: user.phone,
+                      is_whatsapp: user.is_whatsapp,
+                      address: user.address,
+                      lat: user.lat,
+                      lng: user.lng,
+                      location_name: user.location_name || ''
+                    });
+                    setView('settings');
+                  }}
+                  className={cn(
+                    "p-2 rounded-full transition-colors",
+                    view === 'settings' ? "bg-sky-100 text-sky-600 dark:bg-sky-900/30 dark:text-sky-400" : "text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                  )}
+                  title="Settings"
+                >
+                  <Settings className="w-5 h-5" />
                 </button>
                 <button 
                   onClick={handleLogout}
@@ -293,15 +456,15 @@ export default function App() {
               exit={{ opacity: 0, y: -20 }}
               className="space-y-8"
             >
-              {/* Hero */}
               <section className="relative overflow-hidden rounded-3xl bg-sky-600 dark:bg-sky-700 p-8 text-white">
                 <div className="relative z-10 space-y-4">
                   <div className="inline-flex items-center gap-2 bg-white/20 px-3 py-1 rounded-full text-sm font-medium backdrop-blur-sm">
                     <MapPin className="w-4 h-4" />
-                    Chitungwiza, Zimbabwe
+                    {user?.location_name || 'Chitungwiza, Zimbabwe'}
                   </div>
                   <h2 className="text-4xl font-display font-bold leading-tight">
-                    Laundry made easy, <br />right at your doorstep.
+                    {user ? `Hello, ${user.name}!` : 'Laundry made easy,'} <br />
+                    {user ? 'Ready for a clean wash?' : 'right at your doorstep.'}
                   </h2>
                   <p className="text-sky-50 opacity-90 max-w-md">
                     Premium washing, drying, and folding service. We pick up and deliver anywhere in Chitungwiza.
@@ -321,12 +484,10 @@ export default function App() {
                     </button>
                   </div>
                 </div>
-                {/* Decorative Bubbles */}
                 <div className="absolute top-0 right-0 -translate-y-1/4 translate-x-1/4 w-64 h-64 bg-white/10 rounded-full blur-3xl" />
                 <div className="absolute bottom-0 left-0 translate-y-1/4 -translate-x-1/4 w-48 h-48 bg-sky-400/20 rounded-full blur-2xl" />
               </section>
 
-              {/* Pricing Cards */}
               <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm">
                   <div className="flex justify-between items-start mb-4">
@@ -374,7 +535,6 @@ export default function App() {
                 </div>
               </section>
 
-              {/* Discount Banner */}
               <section className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 rounded-3xl p-6 flex items-center gap-4">
                 <div className="bg-amber-100 dark:bg-amber-900/20 p-3 rounded-2xl">
                   <Calendar className="text-amber-600 dark:text-amber-400 w-6 h-6" />
@@ -506,10 +666,16 @@ export default function App() {
                 <div className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm space-y-4">
                   <h3 className="font-bold text-lg flex items-center gap-2 dark:text-white">
                     <MapPin className="w-5 h-5 text-sky-500" />
-                    Pin Your Location
+                    Pickup Location
                   </h3>
-                  <p className="text-sm text-zinc-500 dark:text-zinc-400">Tap on the map to mark your exact pickup point in Chitungwiza.</p>
-                  <MapPicker onLocationSelect={(lat, lng) => setFormData({...formData, lat, lng})} />
+                  <p className="text-sm text-zinc-500 dark:text-zinc-400">Your saved location is pinned. Tap to update for this order.</p>
+                  <MapPicker 
+                    initialPos={formData.lat ? [formData.lat, formData.lng] : undefined}
+                    onLocationSelect={(lat, lng, name) => setFormData({...formData, lat, lng, location_name: name || ''})} 
+                  />
+                  {formData.location_name && (
+                    <p className="text-xs text-sky-600 dark:text-sky-400 font-medium">Detected: {formData.location_name}</p>
+                  )}
                 </div>
 
                 {error && (
@@ -542,7 +708,7 @@ export default function App() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className="max-w-md mx-auto"
+              className="max-w-xl mx-auto"
             >
               <div className="bg-white dark:bg-zinc-900 p-8 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm space-y-6">
                 <div className="text-center space-y-2">
@@ -555,41 +721,107 @@ export default function App() {
                 </div>
 
                 <form onSubmit={handleAuth} className="space-y-4">
-                  {authMode === 'signup' && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {authMode === 'signup' && (
+                      <>
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Full Name</label>
+                          <input 
+                            required
+                            type="text" 
+                            placeholder="John Doe"
+                            className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all"
+                            value={authForm.name}
+                            onChange={e => setAuthForm({...authForm, name: e.target.value})}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Username</label>
+                          <input 
+                            required
+                            type="text" 
+                            placeholder="johndoe123"
+                            className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all"
+                            value={authForm.username}
+                            onChange={e => setAuthForm({...authForm, username: e.target.value})}
+                          />
+                        </div>
+                      </>
+                    )}
                     <div className="space-y-1">
-                      <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Full Name</label>
+                      <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Email Address</label>
                       <input 
                         required
-                        type="text" 
-                        placeholder="John Doe"
+                        type="email" 
+                        placeholder="john@example.com"
                         className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all"
-                        value={authForm.name}
-                        onChange={e => setAuthForm({...authForm, name: e.target.value})}
+                        value={authForm.email}
+                        onChange={e => setAuthForm({...authForm, email: e.target.value})}
                       />
                     </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Password</label>
+                      <input 
+                        required
+                        type="password" 
+                        placeholder="••••••••"
+                        className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all"
+                        value={authForm.password}
+                        onChange={e => setAuthForm({...authForm, password: e.target.value})}
+                      />
+                    </div>
+                    {authMode === 'signup' && (
+                      <>
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Phone Number</label>
+                          <input 
+                            required
+                            type="tel" 
+                            placeholder="+263 7..."
+                            className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all"
+                            value={authForm.phone}
+                            onChange={e => setAuthForm({...authForm, phone: e.target.value})}
+                          />
+                        </div>
+                        <div className="flex items-center gap-3 px-4 py-3 mt-5 bg-zinc-50 dark:bg-zinc-950 rounded-2xl border border-zinc-200 dark:border-zinc-800">
+                          <input 
+                            type="checkbox" 
+                            id="whatsapp"
+                            className="w-5 h-5 rounded border-zinc-300 text-sky-600 focus:ring-sky-500"
+                            checked={authForm.is_whatsapp}
+                            onChange={e => setAuthForm({...authForm, is_whatsapp: e.target.checked})}
+                          />
+                          <label htmlFor="whatsapp" className="text-sm font-medium text-zinc-700 dark:text-zinc-300 cursor-pointer">
+                            I'm available on WhatsApp
+                          </label>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {authMode === 'signup' && (
+                    <div className="space-y-4 pt-4 border-t border-zinc-100 dark:border-zinc-800">
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Default Pickup Address</label>
+                        <textarea 
+                          required
+                          placeholder="Your street address, suburb, etc."
+                          className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all h-20 resize-none"
+                          value={authForm.address}
+                          onChange={e => setAuthForm({...authForm, address: e.target.value})}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Set Your Location on Map</label>
+                        <MapPicker 
+                          onLocationSelect={(lat, lng, name) => setAuthForm({...authForm, lat, lng, location_name: name || ''})} 
+                        />
+                        {authForm.location_name && (
+                          <p className="text-xs text-sky-600 dark:text-sky-400 font-medium">Detected: {authForm.location_name}</p>
+                        )}
+                      </div>
+                    </div>
                   )}
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Email Address</label>
-                    <input 
-                      required
-                      type="email" 
-                      placeholder="john@example.com"
-                      className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all"
-                      value={authForm.email}
-                      onChange={e => setAuthForm({...authForm, email: e.target.value})}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Password</label>
-                    <input 
-                      required
-                      type="password" 
-                      placeholder="••••••••"
-                      className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all"
-                      value={authForm.password}
-                      onChange={e => setAuthForm({...authForm, password: e.target.value})}
-                    />
-                  </div>
 
                   {error && <p className="text-red-500 text-xs font-medium">{error}</p>}
 
@@ -609,6 +841,123 @@ export default function App() {
                     {authMode === 'login' ? "Don't have an account? Sign Up" : "Already have an account? Login"}
                   </button>
                 </div>
+              </div>
+            </motion.div>
+          )}
+
+          {view === 'settings' && (
+            <motion.div 
+              key="settings"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="max-w-xl mx-auto"
+            >
+              <div className="flex items-center gap-4 mb-6">
+                <button 
+                  onClick={() => setView('home')}
+                  className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors"
+                >
+                  <ChevronRight className="w-6 h-6 rotate-180 dark:text-zinc-400" />
+                </button>
+                <h2 className="text-2xl font-display font-bold dark:text-white">Profile Settings</h2>
+              </div>
+
+              <div className="bg-white dark:bg-zinc-900 p-8 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm space-y-6">
+                <div className="flex items-center gap-4 p-4 bg-sky-50 dark:bg-sky-900/20 rounded-2xl border border-sky-100 dark:border-sky-900/30">
+                  <div className="bg-sky-500 p-3 rounded-full text-white">
+                    <User className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold dark:text-white">{user?.name}</h3>
+                    <p className="text-xs text-sky-600 dark:text-sky-400 font-mono">ID: {user?.id}</p>
+                  </div>
+                </div>
+
+                <form onSubmit={handleUpdateProfile} className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Full Name</label>
+                      <input 
+                        required
+                        type="text" 
+                        className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none"
+                        value={authForm.name}
+                        onChange={e => setAuthForm({...authForm, name: e.target.value})}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Username</label>
+                      <input 
+                        required
+                        type="text" 
+                        className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none"
+                        value={authForm.username}
+                        onChange={e => setAuthForm({...authForm, username: e.target.value})}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Email</label>
+                      <input 
+                        required
+                        type="email" 
+                        className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none"
+                        value={authForm.email}
+                        onChange={e => setAuthForm({...authForm, email: e.target.value})}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Phone</label>
+                      <input 
+                        required
+                        type="tel" 
+                        className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none"
+                        value={authForm.phone}
+                        onChange={e => setAuthForm({...authForm, phone: e.target.value})}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 px-4 py-3 bg-zinc-50 dark:bg-zinc-950 rounded-2xl border border-zinc-200 dark:border-zinc-800">
+                    <input 
+                      type="checkbox" 
+                      id="settings_whatsapp"
+                      className="w-5 h-5 rounded border-zinc-300 text-sky-600 focus:ring-sky-500"
+                      checked={authForm.is_whatsapp}
+                      onChange={e => setAuthForm({...authForm, is_whatsapp: e.target.checked})}
+                    />
+                    <label htmlFor="settings_whatsapp" className="text-sm font-medium text-zinc-700 dark:text-zinc-300 cursor-pointer">
+                      I'm available on WhatsApp
+                    </label>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Default Pickup Address</label>
+                    <textarea 
+                      required
+                      className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none h-20 resize-none"
+                      value={authForm.address}
+                      onChange={e => setAuthForm({...authForm, address: e.target.value})}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Update Your Saved Location</label>
+                    <MapPicker 
+                      initialPos={user?.lat ? [user.lat, user.lng] : undefined}
+                      onLocationSelect={(lat, lng, name) => setAuthForm({...authForm, lat, lng, location_name: name || ''})} 
+                    />
+                    {authForm.location_name && (
+                      <p className="text-xs text-sky-600 dark:text-sky-400 font-medium">Detected: {authForm.location_name}</p>
+                    )}
+                  </div>
+
+                  <button 
+                    className="w-full bg-sky-600 text-white py-4 rounded-2xl font-bold hover:bg-sky-700 transition-all shadow-lg shadow-sky-200 dark:shadow-sky-900/20"
+                  >
+                    Save Changes
+                  </button>
+                </form>
               </div>
             </motion.div>
           )}
@@ -727,7 +1076,6 @@ export default function App() {
                 </div>
               ) : (
                 <div className="space-y-6">
-                  {/* Order Summary Card */}
                   <div className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm space-y-4">
                     <div className="flex justify-between items-start">
                       <div>
@@ -764,12 +1112,10 @@ export default function App() {
                     )}
                   </div>
 
-                  {/* Tracking Timeline */}
                   {trackingOrder.status !== 'Cancelled' ? (
                     <div className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm">
                       <h3 className="font-bold mb-8 dark:text-white">Order Status</h3>
                       <div className="space-y-8 relative">
-                        {/* Vertical Line */}
                         <div className="absolute left-4 top-2 bottom-2 w-0.5 bg-zinc-100 dark:bg-zinc-800" />
                         
                         {statusSteps.map((step, idx) => {
@@ -824,7 +1170,6 @@ export default function App() {
         </AnimatePresence>
       </main>
 
-      {/* Footer / Contact */}
       <footer className="bg-zinc-900 dark:bg-black text-white p-8 pb-12 transition-colors">
         <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8">
           <div className="space-y-4">
