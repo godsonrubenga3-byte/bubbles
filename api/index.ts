@@ -92,12 +92,13 @@ app.post("/api/login", async (req, res) => {
 app.post("/api/orders", async (req, res) => {
   try {
     const db = getDb();
-    const { user_id, customer_name, phone, address, lat, lng, clothes_weight, blankets_count, total_price } = req.body;
-    const id = randomUUID();
+    const { id: providedId, user_id, customer_name, phone, address, lat, lng, clothes_weight, blankets_count, total_price } = req.body;
+    const id = providedId || randomUUID();
+    
     await db.execute({
       sql: `
-        INSERT INTO Order_details (id, user_id, customer_name, phone, address, lat, lng, clothes_weight, blankets_count, total_price)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO Order_details (id, user_id, customer_name, phone, address, lat, lng, clothes_weight, blankets_count, total_price, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending')
       `,
       args: [id, user_id, customer_name, phone, address, lat, lng, clothes_weight, blankets_count, total_price],
     });
@@ -107,7 +108,7 @@ app.post("/api/orders", async (req, res) => {
     if (error.message?.includes("TURSO_URL")) {
       res.status(503).json({ error: "Service temporarily unavailable" });
     } else {
-      res.status(500).json({ error: "Failed to create order" });
+      res.status(500).json({ error: "Failed to create order. Please ensure all fields are correct." });
     }
   }
 });
