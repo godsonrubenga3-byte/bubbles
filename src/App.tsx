@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
-  Droplets, 
+  Circle, 
   MapPin, 
   Package, 
   Truck, 
@@ -25,6 +25,14 @@ import {
   MessageSquare,
   Map as MapIcon
 } from 'lucide-react';
+
+const BubblesIcon = ({ className }: { className?: string }) => (
+  <div className={cn("relative flex items-center justify-center", className)}>
+    <Circle className="w-full h-full fill-current opacity-80" />
+    <Circle className="absolute -top-1 -right-1 w-1/2 h-1/2 fill-current opacity-60" />
+    <Circle className="absolute -bottom-0.5 -left-0.5 w-1/3 h-1/3 fill-current opacity-40" />
+  </div>
+);
 import MapPicker from './components/MapPicker';
 import { calculatePrice, isSaturday, PRICING } from './constants';
 import { cn } from './cn';
@@ -61,7 +69,7 @@ interface Order {
 export default function App() {
   const [darkMode, setDarkMode] = useState(() => {
     try {
-      const saved = localStorage.getItem('bubbles_theme');
+      const saved = localStorage.getItem('bubbletz_theme');
       return saved === 'dark';
     } catch {
       return false;
@@ -71,16 +79,16 @@ export default function App() {
   useEffect(() => {
     if (darkMode) {
       document.documentElement.classList.add('dark');
-      localStorage.setItem('bubbles_theme', 'dark');
+      localStorage.setItem('bubbletz_theme', 'dark');
     } else {
       document.documentElement.classList.remove('dark');
-      localStorage.setItem('bubbles_theme', 'light');
+      localStorage.setItem('bubbletz_theme', 'light');
     }
   }, [darkMode]);
 
   const [user, setUser] = useState<UserData | null>(() => {
     try {
-      const saved = localStorage.getItem('bubbles_user');
+      const saved = localStorage.getItem('bubbletz_user');
       if (!saved) return null;
       const parsed = JSON.parse(saved);
       // Ensure it has basic structure
@@ -111,7 +119,7 @@ export default function App() {
 
   const [orderHistory, setOrderHistory] = useState<Order[]>(() => {
     try {
-      const saved = localStorage.getItem('bubbles_orders');
+      const saved = localStorage.getItem('bubbletz_orders');
       if (!saved) return [];
       const parsed = JSON.parse(saved);
       return Array.isArray(parsed) ? parsed : [];
@@ -158,7 +166,7 @@ export default function App() {
 
   useEffect(() => {
     if (orderHistory.length > 0) {
-      localStorage.setItem('bubbles_orders', JSON.stringify(orderHistory));
+      localStorage.setItem('bubbletz_orders', JSON.stringify(orderHistory));
     }
   }, [orderHistory]);
 
@@ -176,7 +184,7 @@ export default function App() {
   };
 
   const syncToSupabase = async (userData: UserData) => {
-    localStorage.setItem('bubbles_user', JSON.stringify(userData));
+    localStorage.setItem('bubbletz_user', JSON.stringify(userData));
     setUser(userData);
   };
 
@@ -225,14 +233,14 @@ export default function App() {
       address: authForm.address || user.address || ''
     };
     setUser(updatedUser);
-    localStorage.setItem('bubbles_user', JSON.stringify(updatedUser));
+    localStorage.setItem('bubbletz_user', JSON.stringify(updatedUser));
     alert('Profile updated successfully!');
     setView('home');
   };
 
   const handleLogout = () => {
     setUser(null);
-    localStorage.removeItem('bubbles_user');
+    localStorage.removeItem('bubbletz_user');
     setView('auth');
   };
 
@@ -376,12 +384,12 @@ export default function App() {
               className="relative bg-white dark:bg-zinc-900 w-full max-w-sm rounded-[32px] p-8 shadow-2xl border border-zinc-200 dark:border-zinc-800 text-center space-y-6"
             >
               <div className="w-20 h-20 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center mx-auto">
-                <CheckCircle2 className="w-10 h-10 text-emerald-600 dark:text-emerald-400" />
+                <BubblesIcon className="w-10 h-10 text-emerald-600 dark:text-emerald-400" />
               </div>
               <div className="space-y-2">
                 <h3 className="text-2xl font-display font-bold dark:text-white">Order Received!</h3>
                 <p className="text-zinc-500 dark:text-zinc-400">
-                  Your order <span className="font-bold text-sky-600 dark:text-sky-400">#{orderId}</span> has been placed successfully. We'll pick up your laundry soon!
+                  Your order <span className="font-bold text-sky-600 dark:text-sky-400">#{orderId}</span> has been placed successfully. bubbletz will pick up your laundry soon!
                 </p>
               </div>
               <button 
@@ -406,9 +414,9 @@ export default function App() {
             onClick={() => { setView('home'); setTrackingOrder(null); }}
           >
             <div className="bg-sky-500 p-2 rounded-xl shadow-lg shadow-sky-200 dark:shadow-sky-900/20">
-              <Droplets className="text-white w-6 h-6" />
+              <BubblesIcon className="text-white w-6 h-6" />
             </div>
-            <h1 className="text-2xl font-display font-bold tracking-tight text-zinc-900 dark:text-white">BUBBLES</h1>
+            <h1 className="text-2xl font-display font-bold tracking-tight text-zinc-900 dark:text-white uppercase">bubbletz</h1>
           </div>
           <div className="flex gap-4">
             <button 
@@ -493,7 +501,7 @@ export default function App() {
                   </div>
                   <h2 className="text-4xl font-display font-bold leading-tight">
                     {user ? `Hello, ${user.name}!` : 'Laundry made easy,'} <br />
-                    {user ? 'Ready for a clean wash?' : 'right at your doorstep.'}
+                    {user ? 'Ready for a clean wash?' : 'with bubbletz at your door.'}
                   </h2>
                   <p className="text-sky-50 opacity-90 max-w-md">
                     Premium washing, drying, and folding service. We pick up and deliver anywhere in Chitungwiza.
@@ -1203,8 +1211,8 @@ export default function App() {
         <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8">
           <div className="space-y-4">
             <div className="flex items-center gap-2">
-              <Droplets className="text-sky-400 w-6 h-6" />
-              <h2 className="text-xl font-display font-bold">BUBBLES</h2>
+              <BubblesIcon className="text-sky-400 w-6 h-6" />
+              <h2 className="text-xl font-display font-bold uppercase tracking-widest">bubbletz</h2>
             </div>
             <p className="text-zinc-400 text-sm max-w-xs">
               Chitungwiza's most reliable laundry service. We take care of your clothes so you can take care of your life.
@@ -1225,7 +1233,7 @@ export default function App() {
           </div>
         </div>
         <div className="max-w-4xl mx-auto mt-12 pt-8 border-t border-white/10 text-center text-zinc-500 text-xs">
-          © {new Date().getFullYear()} BUBBLES Laundry Service. All rights reserved.
+          © {new Date().getFullYear()} bubbletz Laundry Service. All rights reserved.
         </div>
       </footer>
     </div>

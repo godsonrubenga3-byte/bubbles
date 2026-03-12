@@ -79,34 +79,52 @@ export default function MapPicker({ onLocationSelect, initialPos }: MapPickerPro
 
   const handleAutoDetect = () => {
     setLocating(true);
+    
+    if (!window.isSecureContext) {
+      alert("Location features require a secure connection (HTTPS). Please check your connection.");
+      setLocating(false);
+      return;
+    }
+
     if (!navigator.geolocation) {
       alert("Geolocation is not supported by your browser");
       setLocating(false);
       return;
     }
 
+    const options: PositionOptions = {
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 0
+    };
+
     navigator.geolocation.getCurrentPosition(
       async (position) => {
         const { latitude, longitude, accuracy } = position.coords;
-        console.log(`Detected location with accuracy: ${accuracy}m`);
+        console.log(`Detected location: ${latitude}, ${longitude} (Accuracy: ${accuracy}m)`);
         
-        const name = await getAddress(latitude, longitude);
-        onLocationSelect(latitude, longitude, name);
-        
-        // Dispatch event for LocationMarker to update its internal state and fly map
-        window.dispatchEvent(new CustomEvent('map-fly-to', { detail: { lat: latitude, lng: longitude } }));
-        setLocating(false);
+        try {
+          const name = await getAddress(latitude, longitude);
+          onLocationSelect(latitude, longitude, name);
+          window.dispatchEvent(new CustomEvent('map-fly-to', { detail: { lat: latitude, lng: longitude } }));
+        } catch (e) {
+          console.error("Error processing detected location:", e);
+          onLocationSelect(latitude, longitude, `Location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`);
+        } finally {
+          setLocating(false);
+        }
       },
       (error) => {
+        console.error("Geolocation error:", error);
         let msg = "Unable to retrieve your location.";
         if (error.code === 1) msg = "Location permission denied. Please enable location access in your browser settings.";
         else if (error.code === 2) msg = "Location unavailable. Ensure GPS is on and try moving outdoors.";
-        else if (error.code === 3) msg = "Location request timed out.";
+        else if (error.code === 3) msg = "Location request timed out. Please try again or tap the map.";
         
         alert(msg);
         setLocating(false);
       },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      options
     );
   };
 
