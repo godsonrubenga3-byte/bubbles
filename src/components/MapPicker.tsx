@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { CHITUNGWIZA_BOUNDS } from '../constants';
+import { TANZANIA_BOUNDS } from '../constants';
 import { Navigation, MapPin, Loader2 } from 'lucide-react';
 
 // Use CDN for leaflet icons to avoid bundling issues
@@ -132,8 +132,8 @@ export default function MapPicker({ onLocationSelect, initialPos }: MapPickerPro
     <div className="space-y-3">
       <div className="relative h-64 w-full rounded-3xl overflow-hidden border border-zinc-200 dark:border-zinc-800 shadow-inner group">
         <MapContainerAny 
-          center={initialPos || CHITUNGWIZA_BOUNDS.center} 
-          zoom={CHITUNGWIZA_BOUNDS.zoom} 
+          center={initialPos || TANZANIA_BOUNDS.center} 
+          zoom={TANZANIA_BOUNDS.zoom} 
           scrollWheelZoom={false}
           style={{ height: '100%', width: '100%' }}
         >

@@ -497,14 +497,14 @@ export default function App() {
                 <div className="relative z-10 space-y-4">
                   <div className="inline-flex items-center gap-2 bg-white/20 px-3 py-1 rounded-full text-sm font-medium backdrop-blur-sm">
                     <MapPin className="w-4 h-4" />
-                    {user?.location_name || 'Chitungwiza, Zimbabwe'}
+                    {user?.location_name || 'Dar es Salaam, Tanzania'}
                   </div>
                   <h2 className="text-4xl font-display font-bold leading-tight">
                     {user ? `Hello, ${user.name}!` : 'Laundry made easy,'} <br />
                     {user ? 'Ready for a clean wash?' : 'with bubbletz at your door.'}
                   </h2>
                   <p className="text-sky-50 opacity-90 max-w-md">
-                    Premium washing, drying, and folding service. We pick up and deliver anywhere in Chitungwiza.
+                    Premium washing, drying, and folding service. We pick up and deliver anywhere in Dar es Salaam.
                   </p>
                   <div className="flex gap-3 pt-4">
                     <button 
@@ -625,7 +625,7 @@ export default function App() {
                       <input 
                         required
                         type="tel" 
-                        placeholder="+263 7..."
+                        placeholder="+255..."
                         className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all"
                         value={formData.phone}
                         onChange={e => setFormData({...formData, phone: e.target.value})}
@@ -636,7 +636,7 @@ export default function App() {
                     <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Pickup Address</label>
                     <textarea 
                       required
-                      placeholder="Unit L, Chitungwiza..."
+                      placeholder="Kariakoo, Dar es Salaam..."
                       className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all h-24 resize-none"
                       value={formData.address}
                       onChange={e => setFormData({...formData, address: e.target.value})}
@@ -814,7 +814,7 @@ export default function App() {
                           <input 
                             required
                             type="tel" 
-                            placeholder="+263 7..."
+                            placeholder="+255..."
                             className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all"
                             value={authForm.phone}
                             onChange={e => setAuthForm({...authForm, phone: e.target.value})}
@@ -1215,19 +1215,19 @@ export default function App() {
               <h2 className="text-xl font-display font-bold uppercase tracking-widest">bubbletz</h2>
             </div>
             <p className="text-zinc-400 text-sm max-w-xs">
-              Chitungwiza's most reliable laundry service. We take care of your clothes so you can take care of your life.
+              Dar es Salaam's most reliable laundry service. We take care of your clothes so you can take care of your life.
             </p>
           </div>
           <div className="space-y-4">
             <h3 className="font-bold text-sm uppercase tracking-wider text-zinc-500">Contact Us</h3>
             <div className="space-y-2">
-              <a href="tel:+263700000000" className="flex items-center gap-2 text-zinc-300 hover:text-sky-400 transition-colors">
+              <a href="tel:+255000000000" className="flex items-center gap-2 text-zinc-300 hover:text-sky-400 transition-colors">
                 <Phone className="w-4 h-4" />
-                +263 700 000 000
+                +255 000 000 000
               </a>
               <div className="flex items-center gap-2 text-zinc-300">
                 <MapPin className="w-4 h-4" />
-                Unit L, Chitungwiza, Zimbabwe
+                Unit L, Dar es Salaam, Tanzania
               </div>
             </div>
           </div>

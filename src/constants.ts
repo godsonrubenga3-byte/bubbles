@@ -16,9 +16,9 @@ export const PRICING = {
   }
 };
 
-export const CHITUNGWIZA_BOUNDS = {
-  center: [-18.0127, 31.0797] as [number, number],
-  zoom: 13
+export const TANZANIA_BOUNDS = {
+  center: [-6.7924, 39.2083] as [number, number],
+  zoom: 12
 };
 
 export function isSaturday() {

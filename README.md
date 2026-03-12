@@ -4,9 +4,9 @@
 
 # BUBBLES Laundry
 
-> Premium laundry service in Chitungwiza, Zimbabwe. Order pickups, track your laundry status, and enjoy special Saturday discounts.
+> Premium laundry service in Dar es Salaam, Tanzania. Order pickups, track your laundry status, and enjoy special Saturday discounts.
 
-BUBBLES is a full-stack web application that provides on-demand laundry pickup and delivery services in Chitungwiza, Zimbabwe. The app features interactive map-based location selection, real-time order tracking, and user authentication.
+BUBBLES is a full-stack web application that provides on-demand laundry pickup and delivery services in Dar es Salaam, Tanzania. The app features interactive map-based location selection, real-time order tracking, and user authentication.
 
 ## ✨ Features
 
@@ -149,9 +149,9 @@ export const PRICING = {
 Change the default map center in `src/constants.ts`:
 
 ```typescript
-export const CHITUNGWIZA_BOUNDS = {
-  center: [-18.0127, 31.0797] as [number, number],
-  zoom: 13
+export const TANZANIA_BOUNDS = {
+  center: [-6.7924, 39.2083] as [number, number],
+  zoom: 12
 };
 ```
 
@@ -191,6 +191,6 @@ This project is private and proprietary. All rights reserved.
 ---
 
 <div align="center">
-  Made with ❤️ in Chitungwiza, Zimbabwe
+  Made with ❤️ in Dar es Salaam, Tanzania
 </div>
 
