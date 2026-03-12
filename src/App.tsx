@@ -514,7 +514,7 @@ export default function App() {
                       Order Pickup
                     </button>
                     <button 
-                      onClick={() => setView('track')}
+                      onClick={() => setView('history')}
                       className="bg-sky-700 text-white px-6 py-3 rounded-2xl font-bold hover:bg-sky-800 transition-colors"
                     >
                       Track Order
@@ -1088,28 +1088,18 @@ export default function App() {
               {!trackingOrder ? (
                 <div className="bg-white dark:bg-zinc-900 p-8 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm text-center space-y-6">
                   <div className="bg-zinc-50 dark:bg-zinc-950 w-20 h-20 rounded-full flex items-center justify-center mx-auto">
-                    <Search className="text-zinc-400 dark:text-zinc-600 w-10 h-10" />
+                    <History className="text-zinc-400 dark:text-zinc-600 w-10 h-10" />
                   </div>
                   <div className="space-y-2">
-                    <h3 className="text-xl font-bold dark:text-white">Find your order</h3>
-                    <p className="text-zinc-500 dark:text-zinc-400 text-sm">Enter the order ID provided during checkout to track its status.</p>
+                    <h3 className="text-xl font-bold dark:text-white">Track your orders</h3>
+                    <p className="text-zinc-500 dark:text-zinc-400 text-sm">Select an order from your history to see its current status.</p>
                   </div>
-                  <form onSubmit={handleTrack} className="flex gap-2 max-w-sm mx-auto">
-                    <input 
-                      type="text" 
-                      placeholder="BBL-XXXXXX"
-                      className="flex-1 px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all"
-                      value={orderId}
-                      onChange={e => setOrderId(e.target.value.toUpperCase())}
-                    />
-                    <button 
-                      disabled={loading}
-                      className="bg-sky-600 text-white px-6 py-3 rounded-2xl font-bold hover:bg-sky-700 transition-colors disabled:opacity-50"
-                    >
-                      Track
-                    </button>
-                  </form>
-                  {error && <p className="text-red-500 text-sm font-medium">{error}</p>}
+                  <button 
+                    onClick={() => setView('history')}
+                    className="bg-sky-600 text-white px-8 py-3 rounded-2xl font-bold hover:bg-sky-700 transition-colors mx-auto"
+                  >
+                    View Order History
+                  </button>
                 </div>
               ) : (
                 <div className="space-y-6">
@@ -1195,7 +1185,7 @@ export default function App() {
                   )}
 
                   <button 
-                    onClick={() => setTrackingOrder(null)}
+                    onClick={() => { setTrackingOrder(null); setView('history'); }}
                     className="w-full py-4 text-zinc-500 dark:text-zinc-400 font-bold hover:text-zinc-900 dark:hover:white transition-colors"
                   >
                     Track another order
