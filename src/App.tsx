@@ -58,6 +58,8 @@ interface Order {
   created_at: string;
 }
 
+const JULIA_SERVER_URL = 'http://localhost:8080';
+
 export default function App() {
   const [darkMode, setDarkMode] = useState(() => {
     const saved = localStorage.getItem('bubbles_theme');
@@ -144,11 +146,20 @@ export default function App() {
   const fetchUserHistory = async () => {
     if (!user) return;
     try {
-      // In a real app, you'd fetch from an API
-      console.log("Fetching history for user", user.id);
+      const response = await fetch(`/api/orders/user/${user.id}`);
+      if (response.ok) {
+        const orders = await response.json();
+        setOrderHistory(orders);
+      }
     } catch (err) {
       console.error("Failed to fetch history", err);
     }
+  };
+
+  const syncToSupabase = async (userData: UserData) => {
+    // 1. Always Save Locally First (The Cache)
+    localStorage.setItem('bubbles_user', JSON.stringify(userData));
+    setUser(userData);
   };
 
   const handleAuth = async (e: React.FormEvent) => {
@@ -163,59 +174,20 @@ export default function App() {
     }
 
     try {
-      await new Promise(resolve => setTimeout(resolve, 800));
-      
-      let userData: UserData;
-      
-      if (authMode === 'signup') {
-        userData = {
-          id: Date.now().toString(),
-          email: authForm.email,
-          name: authForm.name,
-          username: authForm.username,
-          phone: authForm.phone,
-          is_whatsapp: authForm.is_whatsapp,
-          address: authForm.address,
-          lat: authForm.lat,
-          lng: authForm.lng,
-          location_name: authForm.location_name
-        };
-      } else {
-        const savedUser = localStorage.getItem('bubbles_user');
-        if (savedUser) {
-          const parsed = JSON.parse(savedUser);
-          if (parsed.email === authForm.email) {
-            userData = parsed;
-          } else {
-            userData = {
-              id: Date.now().toString(),
-              email: authForm.email,
-              name: 'Returning User',
-              username: 'user',
-              phone: '',
-              is_whatsapp: true,
-              address: '',
-              lat: 0,
-              lng: 0
-            };
-          }
-        } else {
-          userData = {
-            id: Date.now().toString(),
-            email: authForm.email,
-            name: 'New User',
-            username: 'user',
-            phone: '',
-            is_whatsapp: true,
-            address: '',
-            lat: 0,
-            lng: 0
-          };
-        }
+      const endpoint = authMode === 'signup' ? '/api/signup' : '/api/login';
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(authMode === 'signup' ? authForm : { email: authForm.email, password: authForm.password }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Authentication failed');
       }
 
-      setUser(userData);
-      localStorage.setItem('bubbles_user', JSON.stringify(userData));
+      const userData = await response.json();
+      await syncToSupabase(userData);
       setView('home');
     } catch (err: any) {
       setError(err.message || 'Authentication failed');
@@ -245,6 +217,11 @@ export default function App() {
     if (!confirm('Are you sure you want to cancel this order?')) return;
     setLoading(true);
     try {
+      const response = await fetch(`/api/orders/${id}/cancel`, { method: 'POST' });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to cancel order');
+      }
       setOrderHistory(prev => prev.map(o => o.id === id ? { ...o, status: 'Cancelled' } : o));
       if (trackingOrder && trackingOrder.id === id) {
         setTrackingOrder({ ...trackingOrder, status: 'Cancelled' });
@@ -262,10 +239,16 @@ export default function App() {
     setLoading(true);
     setError('');
     try {
-      const order = orderHistory.find(o => o.id === orderId);
-      if (!order) throw new Error('Order not found in your history');
+      const response = await fetch(`/api/orders/${orderId}`);
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to fetch order');
+      }
+      
+      const order = await response.json();
       setTrackingOrder(order);
     } catch (err: any) {
+      console.error("Tracking error:", err);
       setError(err.message);
       setTrackingOrder(null);
     } finally {
@@ -286,20 +269,42 @@ export default function App() {
 
     setLoading(true);
     setError('');
-    const id = 'BBL-' + Math.random().toString(36).substr(2, 9).toUpperCase();
+    
+    const timestamp = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
     const totalPrice = calculatePrice(formData.weight, formData.blankets);
 
+    const orderData = {
+      id: "BBL-" + timestamp.toUpperCase(),
+      user_id: user?.id,
+      customer_name: formData.name,
+      phone: formData.phone,
+      address: formData.address,
+      lat: formData.lat,
+      lng: formData.lng,
+      clothes_weight: formData.weight,
+      blankets_count: formData.blankets,
+      total_price: totalPrice
+    };
+
     try {
+      const response = await fetch('/api/orders', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(orderData),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to place order');
+      }
+
+      const result = await response.json();
+      const id = orderData.id;
+
       const newOrder: Order = {
-        id,
-        customer_name: formData.name,
-        phone: formData.phone,
-        address: formData.address,
-        lat: formData.lat,
-        lng: formData.lng,
-        clothes_weight: formData.weight,
-        blankets_count: formData.blankets,
-        total_price: totalPrice,
+        ...orderData,
         status: 'Pending',
         created_at: new Date().toISOString()
       };
@@ -319,7 +324,8 @@ export default function App() {
         location_name: user?.location_name || ''
       });
     } catch (err: any) {
-      setError(err.message);
+      console.error("Order error:", err);
+      setError(err.message || "Failed to place order.");
     } finally {
       setLoading(false);
     }

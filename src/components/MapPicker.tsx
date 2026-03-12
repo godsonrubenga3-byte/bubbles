@@ -37,15 +37,28 @@ function LocationMarker({ onLocationSelect, initialPos }: MapPickerProps) {
   const [position, setPosition] = useState<L.LatLng | null>(initialPos ? L.latLng(initialPos[0], initialPos[1]) : null);
   const map = useMap();
 
+  // Update position when initialPos prop changes (e.g., when profile/address changes)
   useEffect(() => {
-    if (initialPos && !position) {
+    if (initialPos) {
       const latlng = L.latLng(initialPos[0], initialPos[1]);
       setPosition(latlng);
       map.setView(latlng, map.getZoom());
     }
-  }, [initialPos]);
+  }, [initialPos, map]);
+
+  // Listen for internal fly-to events (for auto-detect)
+  useEffect(() => {
+    const handleFlyTo = (e: any) => {
+      const { lat, lng } = e.detail;
+      const latlng = L.latLng(lat, lng);
+      setPosition(latlng);
+      map.flyTo(latlng, 16);
+    };
+    window.addEventListener('map-fly-to', handleFlyTo);
+    return () => window.removeEventListener('map-fly-to', handleFlyTo);
+  }, [map]);
   
-  const mapEvents = useMapEvents({
+  useMapEvents({
     async click(e) {
       setPosition(e.latlng);
       map.flyTo(e.latlng, map.getZoom());
@@ -80,20 +93,20 @@ export default function MapPicker({ onLocationSelect, initialPos }: MapPickerPro
         const name = await getAddress(latitude, longitude);
         onLocationSelect(latitude, longitude, name);
         
-        // We need a way to update the marker position in the child component
-        // Since initialPos is only used on mount/init, we might need a key change or state lifting
-        // But for now, the user can also manually tap.
-        // A better way is to pass a 'reset' or 'trigger' to the MapContainer.
-        
-        // For simplicity in this React setup without complex state lifting:
+        // Dispatch event for LocationMarker to update its internal state and fly map
         window.dispatchEvent(new CustomEvent('map-fly-to', { detail: { lat: latitude, lng: longitude } }));
         setLocating(false);
       },
       (error) => {
-        alert("Unable to retrieve your location: " + error.message);
+        let msg = "Unable to retrieve your location.";
+        if (error.code === 1) msg = "Location permission denied. Please enable location access in your browser settings.";
+        else if (error.code === 2) msg = "Location unavailable. Ensure GPS is on and try moving outdoors.";
+        else if (error.code === 3) msg = "Location request timed out.";
+        
+        alert(msg);
         setLocating(false);
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
   };
 
@@ -111,7 +124,6 @@ export default function MapPicker({ onLocationSelect, initialPos }: MapPickerPro
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
           <LocationMarker onLocationSelect={onLocationSelect} initialPos={initialPos} />
-          <MapController />
         </MapContainerAny>
         
         <button
@@ -130,17 +142,4 @@ export default function MapPicker({ onLocationSelect, initialPos }: MapPickerPro
       </div>
     </div>
   );
-}
-
-function MapController() {
-  const map = useMap();
-  useEffect(() => {
-    const handleFlyTo = (e: any) => {
-      const { lat, lng } = e.detail;
-      map.flyTo([lat, lng], 16);
-    };
-    window.addEventListener('map-fly-to', handleFlyTo);
-    return () => window.removeEventListener('map-fly-to', handleFlyTo);
-  }, [map]);
-  return null;
 }

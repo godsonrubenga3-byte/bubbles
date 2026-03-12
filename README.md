@@ -6,7 +6,7 @@
 
 > Premium laundry service in Chitungwiza, Zimbabwe. Order pickups, track your laundry status, and enjoy special Saturday discounts.
 
-BUBBLES is a full-stack web application that provides on-demand laundry pickup and delivery services in Chitungwiza, Zimbabwe. The app features interactive map-based location selection, real-time order tracking, user authentication, and an AI-powered chat assistant for customer support.
+BUBBLES is a full-stack web application that provides on-demand laundry pickup and delivery services in Chitungwiza, Zimbabwe. The app features interactive map-based location selection, real-time order tracking, and user authentication.
 
 ## ✨ Features
 
@@ -15,7 +15,6 @@ BUBBLES is a full-stack web application that provides on-demand laundry pickup a
 | 📦 **Order Pickups** | Place laundry pickup orders with just a few taps |
 | 📍 **Map Selection** | Interactive map (Leaflet) to pin your exact pickup location |
 | 🌍 **Geolocation** | Auto-detect your address using browser geolocation API |
-| 💬 **AI Chat Assistant** | Gemini-powered chatbot for order help and support |
 | 🗓️ **Saturday Discounts** | Special pricing every Saturday (up to 40% off) |
 | 📊 **Order Tracking** | Real-time status updates from Pending to Delivered |
 | 👤 **User Accounts** | Secure signup/login to view order history |
@@ -40,11 +39,10 @@ BUBBLES is a full-stack web application that provides on-demand laundry pickup a
 
 ### Backend
 - **Express.js** - Node.js web framework
-- **better-sqlite3** - Fast SQLite database
+- **@libsql/client** - Turso (libSQL) database client
 - **Vite** - Next-generation build tool
 
-### AI & Services
-- **Google Gemini** - AI chat assistant
+### Services
 - **Leaflet / OpenStreetMap** - Map services
 
 ## 📋 Prerequisites
@@ -72,13 +70,16 @@ npm install
 
 ### 3. Environment Setup
 
-Create a `.env.local` file in the project root with your Gemini API key:
+Create a `.env` file in the project root with your Gemini API key and Turso credentials:
 
 ```env
 GEMINI_API_KEY=your_gemini_api_key_here
+TURSO_URL=libsql://your-db-name-org.turso.io
+TURSO_AUTH_TOKEN=your_turso_auth_token_here
 ```
 
-> **Note:** Get your free API key from [Google AI Studio](https://aistudio.google.com/app/apikey)
+> **Note:** Get your Gemini API key from [Google AI Studio](https://aistudio.google.com/app/apikey) and your Turso credentials from the [Turso Dashboard](https://turso.tech/).
+
 
 ### 4. Run the Application
 
