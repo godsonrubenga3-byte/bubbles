@@ -58,12 +58,14 @@ interface Order {
   created_at: string;
 }
 
-const JULIA_SERVER_URL = 'http://localhost:8080';
-
 export default function App() {
   const [darkMode, setDarkMode] = useState(() => {
-    const saved = localStorage.getItem('bubbles_theme');
-    return saved === 'dark';
+    try {
+      const saved = localStorage.getItem('bubbles_theme');
+      return saved === 'dark';
+    } catch {
+      return false;
+    }
   });
 
   useEffect(() => {
@@ -77,13 +79,22 @@ export default function App() {
   }, [darkMode]);
 
   const [user, setUser] = useState<UserData | null>(() => {
-    const saved = localStorage.getItem('bubbles_user');
-    return saved ? JSON.parse(saved) : null;
+    try {
+      const saved = localStorage.getItem('bubbles_user');
+      if (!saved) return null;
+      const parsed = JSON.parse(saved);
+      // Ensure it has basic structure
+      return (parsed && typeof parsed === 'object' && parsed.id) ? parsed : null;
+    } catch (err) {
+      console.error("Failed to parse user from localStorage", err);
+      return null;
+    }
   });
+
   const [view, setView] = useState<'home' | 'order' | 'track' | 'history' | 'auth' | 'settings'>(() => {
-    const saved = localStorage.getItem('bubbles_user');
-    return saved ? 'home' : 'auth';
+    return user ? 'home' : 'auth';
   });
+
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [authForm, setAuthForm] = useState({ 
     email: '', 
@@ -97,10 +108,18 @@ export default function App() {
     lng: 0,
     location_name: ''
   });
+
   const [orderHistory, setOrderHistory] = useState<Order[]>(() => {
-    const saved = localStorage.getItem('bubbles_orders');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem('bubbles_orders');
+      if (!saved) return [];
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
   });
+
   const [orderId, setOrderId] = useState('');
   const [trackingOrder, setTrackingOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(false);
@@ -123,14 +142,14 @@ export default function App() {
 
   useEffect(() => {
     if (user) {
-      // Pre-fill form from user data
+      // Pre-fill form from user data, ensuring no undefined values
       setFormData(prev => ({
         ...prev,
-        name: user.name,
-        phone: user.phone,
-        address: user.address,
-        lat: user.lat,
-        lng: user.lng,
+        name: user.name || '',
+        phone: user.phone || '',
+        address: user.address || '',
+        lat: user.lat || 0,
+        lng: user.lng || 0,
         location_name: user.location_name || ''
       }));
       fetchUserHistory();
@@ -157,7 +176,6 @@ export default function App() {
   };
 
   const syncToSupabase = async (userData: UserData) => {
-    // 1. Always Save Locally First (The Cache)
     localStorage.setItem('bubbles_user', JSON.stringify(userData));
     setUser(userData);
   };
@@ -200,7 +218,12 @@ export default function App() {
     e.preventDefault();
     if (!user) return;
     
-    const updatedUser = { ...user, ...authForm, id: user.id };
+    const updatedUser = { 
+      ...user, 
+      ...authForm, 
+      id: user.id,
+      address: authForm.address || user.address || ''
+    };
     setUser(updatedUser);
     localStorage.setItem('bubbles_user', JSON.stringify(updatedUser));
     alert('Profile updated successfully!');
@@ -411,14 +434,14 @@ export default function App() {
                   onClick={() => {
                     setAuthForm({
                       ...authForm,
-                      name: user.name,
-                      username: user.username,
-                      email: user.email,
-                      phone: user.phone,
-                      is_whatsapp: user.is_whatsapp,
-                      address: user.address,
-                      lat: user.lat,
-                      lng: user.lng,
+                      name: user.name || '',
+                      username: user.username || '',
+                      email: user.email || '',
+                      phone: user.phone || '',
+                      is_whatsapp: !!user.is_whatsapp,
+                      address: user.address || '',
+                      lat: user.lat || 0,
+                      lng: user.lng || 0,
                       location_name: user.location_name || ''
                     });
                     setView('settings');
@@ -676,7 +699,7 @@ export default function App() {
                   </h3>
                   <p className="text-sm text-zinc-500 dark:text-zinc-400">Your saved location is pinned. Tap to update for this order.</p>
                   <MapPicker 
-                    initialPos={formData.lat ? [formData.lat, formData.lng] : undefined}
+                    initialPos={(formData.lat && formData.lng) ? [formData.lat, formData.lng] : undefined}
                     onLocationSelect={(lat, lng, name) => setFormData({...formData, lat, lng, location_name: name || ''})} 
                   />
                   {formData.location_name && (
@@ -950,7 +973,7 @@ export default function App() {
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Update Your Saved Location</label>
                     <MapPicker 
-                      initialPos={user?.lat ? [user.lat, user.lng] : undefined}
+                      initialPos={(user?.lat && user?.lng) ? [user.lat, user.lng] : undefined}
                       onLocationSelect={(lat, lng, name) => setAuthForm({...authForm, lat, lng, location_name: name || ''})} 
                     />
                     {authForm.location_name && (
@@ -1165,7 +1188,7 @@ export default function App() {
 
                   <button 
                     onClick={() => setTrackingOrder(null)}
-                    className="w-full py-4 text-zinc-500 dark:text-zinc-400 font-bold hover:text-zinc-900 dark:hover:text-white transition-colors"
+                    className="w-full py-4 text-zinc-500 dark:text-zinc-400 font-bold hover:text-zinc-900 dark:hover:white transition-colors"
                   >
                     Track another order
                   </button>
