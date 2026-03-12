@@ -147,7 +147,7 @@ export default function App() {
   });
 
   const saturday = isSaturday();
-
+  formData.address = formData.location_name || formData.address;
   useEffect(() => {
     if (user) {
       // Pre-fill form from user data, ensuring no undefined values
@@ -625,7 +625,7 @@ export default function App() {
                       <input 
                         required
                         type="tel" 
-                        placeholder="+255..."
+                        placeholder="07 ....."
                         className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all"
                         value={formData.phone}
                         onChange={e => setFormData({...formData, phone: e.target.value})}
