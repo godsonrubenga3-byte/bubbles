@@ -23,8 +23,10 @@ import {
   Settings,
   Navigation,
   MessageSquare,
-  Map as MapIcon
+  Map as MapIcon,
+  Bell
 } from 'lucide-react';
+import ReloadPrompt from './components/ReloadPrompt';
 
 const BubblesIcon = ({ className }: { className?: string }) => (
   <div className={cn("relative flex items-center justify-center", className)}>
@@ -33,6 +35,47 @@ const BubblesIcon = ({ className }: { className?: string }) => (
     <Circle className="absolute -bottom-0.5 -left-0.5 w-1/3 h-1/3 fill-current opacity-40" />
   </div>
 );
+
+interface AppNotification {
+  id: string;
+  title: string;
+  message: string;
+  type: 'info' | 'success' | 'warning';
+}
+
+function NotificationToast({ notification, onDismiss }: { notification: AppNotification, onDismiss: (id: string) => void }) {
+  useEffect(() => {
+    const timer = setTimeout(() => onDismiss(notification.id), 5000);
+    return () => clearTimeout(timer);
+  }, [notification, onDismiss]);
+
+  return (
+    <motion.div
+      initial={{ x: 100, opacity: 0 }}
+      animate={{ x: 0, opacity: 1 }}
+      exit={{ x: 100, opacity: 0 }}
+      className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-4 shadow-xl flex items-start gap-3 w-80 mb-3 pointer-events-auto"
+    >
+      <div className={cn(
+        "p-2 rounded-xl mt-0.5",
+        notification.type === 'success' ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" :
+        notification.type === 'warning' ? "bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400" :
+        "bg-sky-100 text-sky-600 dark:bg-sky-900/30 dark:text-sky-400"
+      )}>
+        <Bell className="w-4 h-4" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-bold dark:text-white truncate">{notification.title}</p>
+        <p className="text-xs text-zinc-500 dark:text-zinc-400 line-clamp-2 mt-0.5">{notification.message}</p>
+      </div>
+      <button onClick={() => onDismiss(notification.id)} className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200">
+        <XCircle className="w-4 h-4" />
+      </button>
+    </motion.div>
+  );
+}
+
+import { io } from 'socket.io-client';
 import MapPicker from './components/MapPicker';
 import { calculatePrice, isSaturday, PRICING } from './constants';
 import { cn } from './cn';
@@ -133,6 +176,51 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+
+  const addNotification = (title: string, message: string, type: AppNotification['type'] = 'info') => {
+    const id = Math.random().toString(36).substr(2, 9);
+    setNotifications(prev => [{ id, title, message, type }, ...prev]);
+  };
+
+  const dismissNotification = (id: string) => {
+    setNotifications(prev => prev.filter(n => n.id !== id));
+  };
+
+  // Real-time WebSocket connection for status updates
+  useEffect(() => {
+    if (!user) return;
+
+    const socket = io();
+
+    socket.on("connect", () => {
+      console.log("Connected to WebSocket");
+      socket.emit("join", user.id);
+    });
+
+    socket.on("order_status_update", (data: { orderId: string, status: OrderStatus, message: string }) => {
+      // Update local history
+      setOrderHistory(prev => prev.map(o => 
+        o.id === data.orderId ? { ...o, status: data.status } : o
+      ));
+
+      // Update tracking view if active
+      if (trackingOrder && trackingOrder.id === data.orderId) {
+        setTrackingOrder(prev => prev ? { ...prev, status: data.status } : null);
+      }
+
+      // Show notification
+      addNotification(
+        'Order Updated',
+        data.message,
+        'success'
+      );
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [user, trackingOrder?.id]);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -367,6 +455,16 @@ export default function App() {
 
   return (
     <div className="min-h-screen font-sans">
+      <ReloadPrompt />
+      
+      <div className="fixed top-20 right-4 z-[100] pointer-events-none flex flex-col items-end">
+        <AnimatePresence>
+          {notifications.map(n => (
+            <NotificationToast key={n.id} notification={n} onDismiss={dismissNotification} />
+          ))}
+        </AnimatePresence>
+      </div>
+
       <AnimatePresence>
         {showSuccessModal && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">

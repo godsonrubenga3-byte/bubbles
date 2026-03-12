@@ -183,6 +183,44 @@ app.post("/api/orders/:id/cancel", async (req, res) => {
   }
 });
 
+// Admin Route (Simulated for testing)
+// In production, this would be behind authentication
+app.post("/api/admin/orders/:id/status", async (req, res) => {
+  try {
+    const db = getDb();
+    const { id } = req.params;
+    const { status } = req.body;
+    const io = req.app.get("io");
+
+    // Get order to find the user_id
+    const orderResult = await db.execute({
+      sql: "SELECT user_id FROM Order_details WHERE id = ?",
+      args: [id],
+    });
+    const order = orderResult.rows[0] as any;
+    if (!order) return res.status(404).json({ error: "Order not found" });
+
+    await db.execute({
+      sql: "UPDATE Order_details SET status = ? WHERE id = ?",
+      args: [status, id],
+    });
+
+    // Push notification via WebSocket
+    if (io) {
+      io.to(`user_${order.user_id}`).emit("order_status_update", {
+        orderId: id,
+        status,
+        message: `Order ${id} is now ${status}!`
+      });
+    }
+
+    res.json({ success: true, status });
+  } catch (error: any) {
+    console.error("Admin status update error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 app.get("/api/health", (req, res) => {
   try {
     const db = getDb();
