@@ -37,13 +37,13 @@ app.use(express.json());
 app.post("/api/signup", async (req, res) => {
   try {
     const db = getDb();
-    const { email, password, name, username, phone, is_whatsapp, lat, lng, location_name, address } = req.body;
+    const { email, password, name, username, phone, is_whatsapp, lat, lng, location_name } = req.body;
     const id = randomUUID();
     await db.execute({
-      sql: "INSERT INTO clients_details (id, email, password, name, username, phone, is_whatsapp, lat, lng, location_name, address) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      args: [id, email, password, name, username, phone, is_whatsapp ? 1 : 0, lat, lng, location_name, address || ""],
+      sql: "INSERT INTO clients_details (id, email, password, name, username, phone, is_whatsapp, lat, lng, location_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      args: [id, email, password, name, username, phone, is_whatsapp ? 1 : 0, lat, lng, location_name],
     });
-    res.status(201).json({ id, email, name, username, phone, is_whatsapp, lat, lng, location_name, address: address || "" });
+    res.status(201).json({ id, email, name, username, phone, is_whatsapp, lat, lng, location_name });
   } catch (error: any) {
     console.error("Signup error:", error);
     if (error.message?.includes("TURSO_URL")) {
@@ -73,8 +73,7 @@ app.post("/api/login", async (req, res) => {
         is_whatsapp: user.is_whatsapp === 1,
         lat: user.lat,
         lng: user.lng,
-        location_name: user.location_name,
-        address: user.address || ""
+        location_name: user.location_name
       });
     } else {
       res.status(401).json({ error: "Invalid credentials" });
