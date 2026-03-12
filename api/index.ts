@@ -4,9 +4,16 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
+const tursoUrl = process.env.TURSO_URL;
+const tursoAuthToken = process.env.TURSO_AUTH_TOKEN;
+
+if (!tursoUrl) {
+  console.error("ERROR: TURSO_URL is not defined in environment variables.");
+}
+
 const db = createClient({
-  url: process.env.TURSO_URL!,
-  authToken: process.env.TURSO_AUTH_TOKEN!,
+  url: tursoUrl || "libsql://dummy-url",
+  authToken: tursoAuthToken,
 });
 
 const app = express();
