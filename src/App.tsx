@@ -146,6 +146,29 @@ export default function App() {
     return user ? 'home' : 'auth';
   });
 
+  // Smart Refresh: Pull latest data when view changes or app is focused
+  useEffect(() => {
+    if (user && (view === 'history' || view === 'track' || view === 'home')) {
+      fetchUserHistory();
+    }
+  }, [view, user]);
+
+  useEffect(() => {
+    const handleFocus = () => {
+      if (user) fetchUserHistory();
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && user) fetchUserHistory();
+    });
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleFocus);
+    };
+  }, [user]);
+
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [authForm, setAuthForm] = useState({ 
     email: '', 

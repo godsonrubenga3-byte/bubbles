@@ -4,22 +4,30 @@ import { motion, AnimatePresence } from 'motion/react'
 import { RefreshCw, X } from 'lucide-react'
 
 function ReloadPrompt() {
-  const {
-    offlineReady: [offlineReady, setOfflineReady],
-    needUpdate: [needUpdate, setNeedUpdate],
-    updateServiceWorker,
-  } = useRegisterSW({
+  const sw = useRegisterSW({
     onRegistered(r) {
-      console.log('SW Registered: ' + r)
+      console.log('SW Registered:', r)
     },
     onRegisterError(error) {
       console.log('SW registration error', error)
     },
   })
 
+  // Be ultra-defensive with destructuring
+  const offlineReadyState = sw?.offlineReady;
+  const needUpdateState = sw?.needUpdate;
+  
+  const offlineReady = Array.isArray(offlineReadyState) ? offlineReadyState[0] : !!offlineReadyState;
+  const setOfflineReady = Array.isArray(offlineReadyState) ? offlineReadyState[1] : (() => {});
+  
+  const needUpdate = Array.isArray(needUpdateState) ? needUpdateState[0] : !!needUpdateState;
+  const setNeedUpdate = Array.isArray(needUpdateState) ? needUpdateState[1] : (() => {});
+  
+  const updateServiceWorker = sw?.updateServiceWorker || (() => Promise.resolve());
+
   const close = () => {
-    setOfflineReady(false)
-    setNeedUpdate(false)
+    if (typeof setOfflineReady === 'function') setOfflineReady(false);
+    if (typeof setNeedUpdate === 'function') setNeedUpdate(false);
   }
 
   return (

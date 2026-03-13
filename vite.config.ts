@@ -12,6 +12,9 @@ export default defineConfig(({ mode }) => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
+        devOptions: {
+          enabled: true
+        },
         includeAssets: ['favicon.ico', 'apple-icon-180x180.png', 'manifest.json'],
         manifest: {
           name: 'bubbletz',
