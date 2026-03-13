@@ -146,28 +146,27 @@ export default function App() {
     return user ? 'home' : 'auth';
   });
 
-  // Smart Refresh: Pull latest data when view changes or app is focused
+  // =========================================================================
+  // ⚡️ REAL-TIME POLLING BANNER ⚡️
+  // This block handles "Eventual Consistency" by fetching from the DB 
+  // every 1000ms (1 second). Change the interval below to 30000 for 30s.
+  // =========================================================================
   useEffect(() => {
-    if (user && (view === 'history' || view === 'track' || view === 'home')) {
-      fetchUserHistory();
-    }
-  }, [view, user]);
+    if (!user) return;
 
-  useEffect(() => {
-    const handleFocus = () => {
-      if (user) fetchUserHistory();
+    const poll = () => {
+      // Only fetch if the tab is actually active/visible
+      if (document.visibilityState === 'visible') {
+        fetchUserHistory();
+      }
     };
 
-    window.addEventListener('focus', handleFocus);
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible' && user) fetchUserHistory();
-    });
+    poll(); // Initial call
+    const pollingInterval = setInterval(poll, 1000); 
 
-    return () => {
-      window.removeEventListener('focus', handleFocus);
-      document.removeEventListener('visibilitychange', handleFocus);
-    };
-  }, [user]);
+    return () => clearInterval(pollingInterval);
+  }, [user, trackingOrder?.id, trackingOrder?.status]); 
+  // =========================================================================
 
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [authForm, setAuthForm] = useState({ 
@@ -288,6 +287,19 @@ export default function App() {
       if (response.ok) {
         const orders = await response.json();
         setOrderHistory(orders);
+
+        // Sync tracking view if active
+        if (trackingOrder) {
+          const updated = orders.find((o: Order) => o.id === trackingOrder.id);
+          if (updated && updated.status !== trackingOrder.status) {
+            setTrackingOrder(updated);
+            addNotification(
+              'Status Update',
+              `Order ${updated.id} is now ${updated.status}!`,
+              'success'
+            );
+          }
+        }
       }
     } catch (err) {
       console.error("Failed to fetch history", err);
