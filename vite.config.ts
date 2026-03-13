@@ -13,7 +13,27 @@ export default defineConfig(({ mode }) => {
       VitePWA({
         registerType: 'autoUpdate',
         devOptions: {
-          enabled: true
+          enabled: false // ⚡️ Disable SW in dev to avoid "blank screen" issues with cache
+        },
+        workbox: {
+          globPatterns: ['**/*.{js,css,html,ico,png,svg}'], // Explicitly define what to cache
+          cleanupOutdatedCaches: true,
+          runtimeCaching: [
+            {
+              urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'google-fonts-cache',
+                expiration: {
+                  maxEntries: 10,
+                  maxAgeSeconds: 60 * 60 * 24 * 365 // <== 365 days
+                },
+                cacheableResponse: {
+                  statuses: [0, 200]
+                }
+              }
+            }
+          ]
         },
         includeAssets: ['favicon.ico', 'apple-icon-180x180.png', 'manifest.json'],
         manifest: {

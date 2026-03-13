@@ -146,28 +146,6 @@ export default function App() {
     return user ? 'home' : 'auth';
   });
 
-  // =========================================================================
-  // ⚡️ REAL-TIME POLLING BANNER ⚡️
-  // This block handles "Eventual Consistency" by fetching from the DB 
-  // every 1000ms (1 second). Change the interval below to 30000 for 30s.
-  // =========================================================================
-  useEffect(() => {
-    if (!user) return;
-
-    const poll = () => {
-      // Only fetch if the tab is actually active/visible
-      if (document.visibilityState === 'visible') {
-        fetchUserHistory();
-      }
-    };
-
-    poll(); // Initial call
-    const pollingInterval = setInterval(poll, 1000); 
-
-    return () => clearInterval(pollingInterval);
-  }, [user, trackingOrder?.id, trackingOrder?.status]); 
-  // =========================================================================
-
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [authForm, setAuthForm] = useState({ 
     email: '', 
@@ -305,6 +283,28 @@ export default function App() {
       console.error("Failed to fetch history", err);
     }
   };
+
+  // =========================================================================
+  // ⚡️ REAL-TIME POLLING BANNER ⚡️
+  // This block handles "Eventual Consistency" by fetching from the DB 
+  // every 1000ms (1 second). 
+  // =========================================================================
+  useEffect(() => {
+    if (!user) return;
+
+    const poll = () => {
+      // Only fetch if the tab is actually active/visible
+      if (document.visibilityState === 'visible') {
+        fetchUserHistory();
+      }
+    };
+
+    poll(); // Initial call
+    const pollingInterval = setInterval(poll, 1000); 
+
+    return () => clearInterval(pollingInterval);
+  }, [user, trackingOrder?.id, trackingOrder?.status]); 
+  // =========================================================================
 
   const syncToSupabase = async (userData: UserData) => {
     localStorage.setItem('bubbletz_user', JSON.stringify(userData));
