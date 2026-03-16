@@ -4,9 +4,9 @@
 
 # BUBBLES Laundry
 
-> Premium laundry service in Dar es Salaam, Tanzania. Order pickups, track your laundry status, and enjoy special Saturday discounts.
+> Premium laundry service in dar es saam. Order pickups, track your laundry status, and enjoy special Saturday discounts.
 
-BUBBLES is a full-stack web application that provides on-demand laundry pickup and delivery services in Dar es Salaam, Tanzania. The app features interactive map-based location selection, real-time order tracking, and user authentication.
+BUBBLES is a full-stack web application that provides on-demand laundry pickup and delivery services in dar es saam. The app features interactive map-based location selection, real-time order tracking, and user authentication.
 
 ## ✨ Features
 
@@ -177,6 +177,14 @@ npm run preview
 
 The production files will be in the `dist/` directory.
 
+
+
+## 📄 Copyright
+
+Copyright © 2024 REBI group  
+dar es saam  
+Contact: bubblestzlaundry@gmail.com
+
 ## 📄 License
 
 This project is private and proprietary. All rights reserved.
@@ -191,6 +199,6 @@ This project is private and proprietary. All rights reserved.
 ---
 
 <div align="center">
-  Made with ❤️ in Dar es Salaam, Tanzania
+  Made with ❤️ in dar es saam
 </div>
 

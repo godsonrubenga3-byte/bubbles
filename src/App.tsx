@@ -24,7 +24,8 @@ import {
   Navigation,
   MessageSquare,
   Map as MapIcon,
-  Bell
+  Bell,
+  Mail
 } from 'lucide-react';
 import ReloadPrompt from './components/ReloadPrompt';
 
@@ -947,7 +948,7 @@ export default function App() {
                           <input 
                             required
                             type="tel" 
-                            placeholder="+255..."
+                            placeholder="Phone number..."
                             className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all"
                             value={authForm.phone}
                             onChange={e => setAuthForm({...authForm, phone: e.target.value})}
@@ -1319,8 +1320,7 @@ export default function App() {
 
                   <button 
                     onClick={() => { setTrackingOrder(null); setView('history'); }}
-                    className="w-full py-4 text-zinc-500 dark:text-zinc-400 font-bold hover:text-zinc-900 dark:hover:white transition-colors"
-                  >
+                    className="w-full py-4 text-zinc-500 dark:text-zinc-400 font-bold hover:text-zinc-900 dark:hover:white transition-colors">
                     Track another order
                   </button>
                 </div>
@@ -1344,19 +1344,19 @@ export default function App() {
           <div className="space-y-4">
             <h3 className="font-bold text-sm uppercase tracking-wider text-zinc-500">Contact Us</h3>
             <div className="space-y-2">
-              <a href="tel:+255000000000" className="flex items-center gap-2 text-zinc-300 hover:text-sky-400 transition-colors">
-                <Phone className="w-4 h-4" />
-                +255 000 000 000
+              <a href="mailto:bubblestzlaundry@gmail.com" className="flex items-center gap-2 text-zinc-300 hover:text-sky-400 transition-colors">
+                <Mail className="w-4 h-4" />
+                bubblestzlaundry@gmail.com
               </a>
               <div className="flex items-center gap-2 text-zinc-300">
                 <MapPin className="w-4 h-4" />
-                Unit L, Dar es Salaam, Tanzania
+                Dar es Salaam, Tanzania
               </div>
             </div>
           </div>
         </div>
         <div className="max-w-4xl mx-auto mt-12 pt-8 border-t border-white/10 text-center text-zinc-500 text-xs">
-          © {new Date().getFullYear()} bubbletz Laundry Service. All rights reserved.
+          © {new Date().getFullYear()} REBI group. All rights reserved.
         </div>
       </footer>
     </div>
