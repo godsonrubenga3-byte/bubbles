@@ -88,6 +88,26 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
+app.post("/api/recover-password", async (req, res) => {
+  try {
+    const db = getDb();
+    const { email } = req.body;
+    const result = await db.execute({
+      sql: "SELECT password FROM clients_details WHERE email = ?",
+      args: [email],
+    });
+    const user = result.rows[0] as any;
+    if (user) {
+      res.json({ password: user.password });
+    } else {
+      res.status(404).json({ error: "No account found with this email" });
+    }
+  } catch (error: any) {
+    console.error("Recovery error:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // API Routes
 app.post("/api/orders", async (req, res) => {
   try {
@@ -179,6 +199,40 @@ app.post("/api/orders/:id/cancel", async (req, res) => {
       res.status(503).json({ error: "Service temporarily unavailable" });
     } else {
       res.status(500).json({ error: "Internal server error" });
+    }
+  }
+});
+
+app.post("/api/orders/:id/update", async (req, res) => {
+  try {
+    const db = getDb();
+    const { id } = req.params;
+    const { customer_name, phone, address, lat, lng, clothes_weight, blankets_count, total_price } = req.body;
+    
+    // Check if order exists and is pending
+    const statusResult = await db.execute({
+      sql: "SELECT status FROM Order_details WHERE id = ?",
+      args: [id],
+    });
+    const order = statusResult.rows[0];
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    if (order.status !== 'Pending') return res.status(400).json({ error: "Only pending orders can be edited" });
+
+    await db.execute({
+      sql: `
+        UPDATE Order_details 
+        SET customer_name = ?, phone = ?, address = ?, lat = ?, lng = ?, clothes_weight = ?, blankets_count = ?, total_price = ?
+        WHERE id = ?
+      `,
+      args: [customer_name, phone, address, lat, lng, clothes_weight, blankets_count, total_price, id],
+    });
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error("Orders update error:", error);
+    if (error.message?.includes("TURSO_URL")) {
+      res.status(503).json({ error: "Service temporarily unavailable" });
+    } else {
+      res.status(500).json({ error: "Failed to update order" });
     }
   }
 });

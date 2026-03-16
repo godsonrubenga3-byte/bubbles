@@ -24,16 +24,17 @@ import {
   Navigation,
   MessageSquare,
   Map as MapIcon,
-  Bell
+  Bell,
+  Edit
 } from 'lucide-react';
 import ReloadPrompt from './components/ReloadPrompt';
 
 const BubblesIcon = ({ className }: { className?: string }) => (
-  <div className={cn("relative flex items-center justify-center", className)}>
-    <Circle className="w-full h-full fill-current opacity-80" />
-    <Circle className="absolute -top-1 -right-1 w-1/2 h-1/2 fill-current opacity-60" />
-    <Circle className="absolute -bottom-0.5 -left-0.5 w-1/3 h-1/3 fill-current opacity-40" />
-  </div>
+  <img 
+    src="/android-icon-192x192.png" 
+    alt="bubbletz logo" 
+    className={cn("object-contain", className)}
+  />
 );
 
 interface AppNotification {
@@ -77,8 +78,25 @@ function NotificationToast({ notification, onDismiss }: { notification: AppNotif
 
 import { io } from 'socket.io-client';
 import MapPicker from './components/MapPicker';
-import { calculatePrice, isSaturday, PRICING } from './constants';
+import { calculatePrice, isSaturday, PRICING, getApiUrl, API_BASE_URL } from './constants';
 import { cn } from './cn';
+import { Haptics, ImpactStyle } from '@capacitor/haptics';
+
+const hapticClick = async () => {
+  try {
+    await Haptics.impact({ style: ImpactStyle.Light });
+  } catch (e) {
+    // Fallback for browser
+  }
+};
+
+const hapticSuccess = async () => {
+  try {
+    await Haptics.notification({ type: 'SUCCESS' as any });
+  } catch (e) {
+    // Fallback for browser
+  }
+};
 
 type OrderStatus = 'Pending' | 'Picked Up' | 'Washing' | 'Drying' | 'Ready for Delivery' | 'Delivered' | 'Cancelled';
 
@@ -134,7 +152,6 @@ export default function App() {
       const saved = localStorage.getItem('bubbletz_user');
       if (!saved) return null;
       const parsed = JSON.parse(saved);
-      // Ensure it has basic structure
       return (parsed && typeof parsed === 'object' && parsed.id) ? parsed : null;
     } catch (err) {
       console.error("Failed to parse user from localStorage", err);
@@ -146,7 +163,8 @@ export default function App() {
     return user ? 'home' : 'auth';
   });
 
-  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
+  const [authMode, setAuthMode] = useState<'login' | 'signup' | 'recover'>('login');
+  const [recoveryPassword, setRecoveryPassword] = useState('');
   const [authForm, setAuthForm] = useState({ 
     email: '', 
     password: '', 
@@ -172,6 +190,7 @@ export default function App() {
   });
 
   const [orderId, setOrderId] = useState('');
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [trackingOrder, setTrackingOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -191,7 +210,7 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
 
-    const socket = io();
+    const socket = io(API_BASE_URL);
 
     socket.on("connect", () => {
       console.log("Connected to WebSocket");
@@ -199,22 +218,15 @@ export default function App() {
     });
 
     socket.on("order_status_update", (data: { orderId: string, status: OrderStatus, message: string }) => {
-      // Update local history
       setOrderHistory(prev => prev.map(o => 
         o.id === data.orderId ? { ...o, status: data.status } : o
       ));
 
-      // Update tracking view if active
       if (trackingOrder && trackingOrder.id === data.orderId) {
         setTrackingOrder(prev => prev ? { ...prev, status: data.status } : null);
       }
 
-      // Show notification
-      addNotification(
-        'Order Updated',
-        data.message,
-        'success'
-      );
+      addNotification('Order Updated', data.message, 'success');
     });
 
     return () => {
@@ -222,7 +234,6 @@ export default function App() {
     };
   }, [user, trackingOrder?.id]);
 
-  // Form State
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
@@ -238,7 +249,6 @@ export default function App() {
   formData.address = formData.location_name || formData.address;
   useEffect(() => {
     if (user) {
-      // Pre-fill form from user data, ensuring no undefined values
       setFormData(prev => ({
         ...prev,
         name: user.name || '',
@@ -261,21 +271,16 @@ export default function App() {
   const fetchUserHistory = async () => {
     if (!user) return;
     try {
-      const response = await fetch(`/api/orders/user/${user.id}`);
+      const response = await fetch(getApiUrl(`/api/orders/user/${user.id}`));
       if (response.ok) {
         const orders = await response.json();
         setOrderHistory(orders);
 
-        // Sync tracking view if active
         if (trackingOrder) {
           const updated = orders.find((o: Order) => o.id === trackingOrder.id);
           if (updated && updated.status !== trackingOrder.status) {
             setTrackingOrder(updated);
-            addNotification(
-              'Status Update',
-              `Order ${updated.id} is now ${updated.status}!`,
-              'success'
-            );
+            addNotification('Status Update', `Order ${updated.id} is now ${updated.status}!`, 'success');
           }
         }
       }
@@ -284,27 +289,17 @@ export default function App() {
     }
   };
 
-  // =========================================================================
-  // ⚡️ REAL-TIME POLLING BANNER ⚡️
-  // This block handles "Eventual Consistency" by fetching from the DB 
-  // every 1000ms (1 second). 
-  // =========================================================================
   useEffect(() => {
     if (!user) return;
-
     const poll = () => {
-      // Only fetch if the tab is actually active/visible
       if (document.visibilityState === 'visible') {
         fetchUserHistory();
       }
     };
-
-    poll(); // Initial call
+    poll();
     const pollingInterval = setInterval(poll, 1000); 
-
     return () => clearInterval(pollingInterval);
   }, [user, trackingOrder?.id, trackingOrder?.status]); 
-  // =========================================================================
 
   const syncToSupabase = async (userData: UserData) => {
     localStorage.setItem('bubbletz_user', JSON.stringify(userData));
@@ -315,6 +310,7 @@ export default function App() {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setRecoveryPassword('');
 
     if (authMode === 'signup' && authForm.lat === 0) {
       setError('Please select your location on the map');
@@ -323,8 +319,25 @@ export default function App() {
     }
 
     try {
+      if (authMode === 'recover') {
+        const response = await fetch(getApiUrl('/api/recover-password'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: authForm.email }),
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.error || 'Recovery failed');
+        }
+
+        const data = await response.json();
+        setRecoveryPassword(data.password);
+        return;
+      }
+
       const endpoint = authMode === 'signup' ? '/api/signup' : '/api/login';
-      const response = await fetch(endpoint, {
+      const response = await fetch(getApiUrl(endpoint), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(authMode === 'signup' ? authForm : { email: authForm.email, password: authForm.password }),
@@ -371,7 +384,7 @@ export default function App() {
     if (!confirm('Are you sure you want to cancel this order?')) return;
     setLoading(true);
     try {
-      const response = await fetch(`/api/orders/${id}/cancel`, { method: 'POST' });
+      const response = await fetch(getApiUrl(`/api/orders/${id}/cancel`), { method: 'POST' });
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.error || 'Failed to cancel order');
@@ -393,7 +406,7 @@ export default function App() {
     setLoading(true);
     setError('');
     try {
-      const response = await fetch(`/api/orders/${orderId}`);
+      const response = await fetch(getApiUrl(`/api/orders/${orderId}`));
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.error || 'Failed to fetch order');
@@ -428,7 +441,7 @@ export default function App() {
     const totalPrice = calculatePrice(formData.weight, formData.blankets);
 
     const orderData = {
-      id: "BBL-" + timestamp.toUpperCase(),
+      id: editingOrder ? editingOrder.id : "BBL-" + timestamp.toUpperCase(),
       user_id: user?.id,
       customer_name: formData.name,
       phone: formData.phone,
@@ -441,7 +454,8 @@ export default function App() {
     };
 
     try {
-      const response = await fetch('/api/orders', {
+      const endpoint = editingOrder ? `/api/orders/${editingOrder.id}/update` : '/api/orders';
+      const response = await fetch(getApiUrl(endpoint), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -454,18 +468,27 @@ export default function App() {
         throw new Error(data.error || 'Failed to place order');
       }
 
-      const result = await response.json();
-      const id = orderData.id;
+      if (editingOrder) {
+        const updatedOrder = {
+          ...editingOrder,
+          ...orderData,
+        };
+        setOrderHistory(prev => prev.map(o => o.id === editingOrder.id ? updatedOrder : o));
+        setEditingOrder(null);
+        alert('Order updated successfully!');
+        setView('history');
+      } else {
+        const newOrder: Order = {
+          ...orderData,
+          status: 'Pending',
+          created_at: new Date().toISOString()
+        };
 
-      const newOrder: Order = {
-        ...orderData,
-        status: 'Pending',
-        created_at: new Date().toISOString()
-      };
-
-      setOrderHistory([newOrder, ...orderHistory]);
-      setOrderId(id);
-      setShowSuccessModal(true);
+        setOrderHistory([newOrder, ...orderHistory]);
+        setOrderId(orderData.id);
+        hapticSuccess();
+        setShowSuccessModal(true);
+      }
       
       setFormData({ 
         name: user?.name || '', 
@@ -488,11 +511,32 @@ export default function App() {
   const statusSteps: OrderStatus[] = ['Pending', 'Picked Up', 'Washing', 'Drying', 'Ready for Delivery', 'Delivered'];
   const getStatusIndex = (status: OrderStatus) => statusSteps.indexOf(status);
 
+  const NavButton = ({ target, icon: Icon, label }: { target: any, icon: any, label: string }) => {
+    const isActive = view === target;
+    return (
+      <button 
+        onClick={() => { hapticClick(); setView(target); }}
+        className={cn(
+          "flex flex-col items-center justify-center gap-1 flex-1 py-1 transition-all duration-300",
+          isActive ? "text-sky-600 scale-105" : "text-zinc-400 hover:text-zinc-600 dark:text-zinc-500 dark:hover:text-zinc-300"
+        )}
+      >
+        <div className={cn(
+          "p-1.5 rounded-xl transition-colors",
+          isActive ? "bg-sky-50 dark:bg-sky-900/20" : "bg-transparent"
+        )}>
+          <Icon className={cn("w-6 h-6", isActive ? "fill-current" : "stroke-[1.5px]")} />
+        </div>
+        <span className="text-[10px] font-bold uppercase tracking-wider">{label}</span>
+      </button>
+    );
+  };
+
   return (
-    <div className="min-h-screen font-sans">
+    <div className="min-h-screen font-sans bg-zinc-50 dark:bg-zinc-950 transition-colors duration-500">
       <ReloadPrompt />
       
-      <div className="fixed top-20 right-4 z-[100] pointer-events-none flex flex-col items-end">
+      <div className="fixed top-24 right-4 z-[100] pointer-events-none flex flex-col items-end">
         <AnimatePresence>
           {notifications.map(n => (
             <NotificationToast key={n.id} notification={n} onDismiss={dismissNotification} />
@@ -502,36 +546,37 @@ export default function App() {
 
       <AnimatePresence>
         {showSuccessModal && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
             <motion.div 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setShowSuccessModal(false)}
-              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              onClick={() => { hapticClick(); setShowSuccessModal(false); }}
+              className="absolute inset-0 bg-black/60 backdrop-blur-md"
             />
             <motion.div 
-              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              initial={{ scale: 0.8, opacity: 0, y: 50 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="relative bg-white dark:bg-zinc-900 w-full max-w-sm rounded-[32px] p-8 shadow-2xl border border-zinc-200 dark:border-zinc-800 text-center space-y-6"
+              exit={{ scale: 0.8, opacity: 0, y: 50 }}
+              className="relative bg-white dark:bg-zinc-900 w-full max-w-sm rounded-[40px] p-10 shadow-2xl border border-zinc-200 dark:border-zinc-800 text-center space-y-8"
             >
-              <div className="w-20 h-20 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center mx-auto">
-                <BubblesIcon className="w-10 h-10 text-emerald-600 dark:text-emerald-400" />
+              <div className="w-24 h-24 mx-auto drop-shadow-2xl">
+                <BubblesIcon className="w-full h-full" />
               </div>
-              <div className="space-y-2">
-                <h3 className="text-2xl font-display font-bold dark:text-white">Order Received!</h3>
-                <p className="text-zinc-500 dark:text-zinc-400">
-                  Your order <span className="font-bold text-sky-600 dark:text-sky-400">#{orderId}</span> has been placed successfully. bubbletz will pick up your laundry soon!
+              <div className="space-y-3">
+                <h3 className="text-3xl font-display font-bold dark:text-white">Success!</h3>
+                <p className="text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                  Your order <span className="font-bold text-sky-600 dark:text-sky-400">#{orderId}</span> is in safe hands. We'll be there soon!
                 </p>
               </div>
               <button 
                 onClick={() => {
+                  hapticSuccess();
                   setShowSuccessModal(false);
                   setView('track');
                   handleTrack();
                 }}
-                className="w-full bg-sky-600 text-white py-4 rounded-2xl font-bold hover:bg-sky-700 transition-all shadow-lg shadow-sky-200 dark:shadow-sky-900/20"
+                className="w-full bg-sky-600 text-white py-5 rounded-[24px] font-bold hover:bg-sky-700 active:scale-95 transition-all shadow-xl shadow-sky-200 dark:shadow-sky-900/30"
               >
                 Track My Order
               </button>
@@ -540,75 +585,31 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      <header className="sticky top-0 z-50 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800 px-4 py-3">
+      <header className="sticky top-0 z-50 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-xl border-b border-zinc-200/50 dark:border-zinc-800/50 px-6 py-4 pt-[calc(env(safe-area-inset-top,0px)+16px)]">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <div 
-            className="flex items-center gap-2 cursor-pointer" 
-            onClick={() => { setView('home'); setTrackingOrder(null); }}
+            className="flex items-center gap-3 cursor-pointer group" 
+            onClick={() => { hapticClick(); setView('home'); setTrackingOrder(null); }}
           >
-            <div className="bg-sky-500 p-2 rounded-xl shadow-lg shadow-sky-200 dark:shadow-sky-900/20">
-              <BubblesIcon className="text-white w-6 h-6" />
+            <BubblesIcon className="w-9 h-9 drop-shadow-md group-active:scale-90 transition-transform" />
+            <div>
+              <h1 className="text-xl font-display font-bold tracking-tight text-zinc-900 dark:text-white uppercase leading-none">bubbletz</h1>
+              <p className="text-[10px] font-bold text-sky-600 dark:text-sky-400 uppercase tracking-widest mt-0.5">Laundry Service</p>
             </div>
-            <h1 className="text-2xl font-display font-bold tracking-tight text-zinc-900 dark:text-white uppercase">bubbletz</h1>
           </div>
-          <div className="flex gap-4">
+          
+          <div className="flex items-center gap-2">
             <button 
-              onClick={() => setDarkMode(!darkMode)}
-              className="p-2 rounded-full text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-              title="Toggle Theme"
+              onClick={() => { hapticClick(); setDarkMode(!darkMode); }}
+              className="p-2.5 rounded-2xl bg-zinc-100 dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 hover:scale-105 active:scale-90 transition-all border border-zinc-200/50 dark:border-zinc-800/50"
             >
               {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
             </button>
-            {user ? (
-              <div className="flex items-center gap-1">
-                <button 
-                  onClick={() => setView('history')}
-                  className={cn(
-                    "p-2 rounded-full transition-colors",
-                    view === 'history' ? "bg-sky-100 text-sky-600 dark:bg-sky-900/30 dark:text-sky-400" : "text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                  )}
-                  title="History"
-                >
-                  <History className="w-5 h-5" />
-                </button>
-                <button 
-                  onClick={() => {
-                    setAuthForm({
-                      ...authForm,
-                      name: user.name || '',
-                      username: user.username || '',
-                      email: user.email || '',
-                      phone: user.phone || '',
-                      is_whatsapp: !!user.is_whatsapp,
-                      address: user.address || '',
-                      lat: user.lat || 0,
-                      lng: user.lng || 0,
-                      location_name: user.location_name || ''
-                    });
-                    setView('settings');
-                  }}
-                  className={cn(
-                    "p-2 rounded-full transition-colors",
-                    view === 'settings' ? "bg-sky-100 text-sky-600 dark:bg-sky-900/30 dark:text-sky-400" : "text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                  )}
-                  title="Settings"
-                >
-                  <Settings className="w-5 h-5" />
-                </button>
-                <button 
-                  onClick={handleLogout}
-                  className="p-2 rounded-full text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-                  title="Logout"
-                >
-                  <LogOut className="w-5 h-5" />
-                </button>
-              </div>
-            ) : (
+            {!user && (
               <button 
-                onClick={() => setView('auth')}
-                className="flex items-center gap-2 bg-sky-50 text-sky-600 dark:bg-sky-900/20 dark:text-sky-400 px-4 py-2 rounded-xl font-bold hover:bg-sky-100 dark:hover:bg-sky-900/40 transition-colors"
+                onClick={() => { hapticClick(); setView('auth'); }}
+                className="bg-sky-600 text-white px-5 py-2.5 rounded-2xl font-bold text-sm shadow-lg shadow-sky-200 dark:shadow-sky-900/20 active:scale-95 transition-all"
               >
-                <User className="w-4 h-4" />
                 Login
               </button>
             )}
@@ -616,14 +617,15 @@ export default function App() {
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto p-4 pb-24">
+      <main className="max-w-4xl mx-auto p-4 pb-32">
         <AnimatePresence mode="wait">
           {view === 'home' && (
             <motion.div 
               key="home"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
               className="space-y-8"
             >
               <section className="relative overflow-hidden rounded-3xl bg-sky-600 dark:bg-sky-700 p-8 text-white">
@@ -641,20 +643,20 @@ export default function App() {
                   </p>
                   <div className="flex gap-3 pt-4">
                     <button 
-                      onClick={() => setView('order')}
+                      onClick={() => { hapticClick(); setView('order'); }}
                       className="bg-white text-sky-600 px-6 py-3 rounded-2xl font-bold shadow-xl hover:bg-sky-50 transition-colors"
                     >
                       Order Pickup
                     </button>
                     <button 
-                      onClick={() => setView('history')}
+                      onClick={() => { hapticClick(); setView('history'); }}
                       className="bg-sky-700 text-white px-6 py-3 rounded-2xl font-bold hover:bg-sky-800 transition-colors"
                     >
                       Track Order
                     </button>
                   </div>
                 </div>
-                <div className="absolute top-0 right-0 -translate-y-1/4 translate-x-1/4 w-64 h-64 bg-white/10 rounded-full blur-3xl" />
+                <BubblesIcon className="absolute top-0 right-0 -translate-y-1/4 translate-x-1/4 w-64 h-64 opacity-20 blur-sm" />
                 <div className="absolute bottom-0 left-0 translate-y-1/4 -translate-x-1/4 w-48 h-48 bg-sky-400/20 rounded-full blur-2xl" />
               </section>
 
@@ -677,9 +679,6 @@ export default function App() {
                       ${saturday ? PRICING.NORMAL.SATURDAY : PRICING.NORMAL.REGULAR}
                     </span>
                     <span className="text-zinc-400">/kg</span>
-                    {!saturday && (
-                      <span className="text-zinc-400 line-through text-sm ml-2">${PRICING.NORMAL.REGULAR}</span>
-                    )}
                   </div>
                 </div>
 
@@ -705,15 +704,17 @@ export default function App() {
                 </div>
               </section>
 
-              <section className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 rounded-3xl p-6 flex items-center gap-4">
-                <div className="bg-amber-100 dark:bg-amber-900/20 p-3 rounded-2xl">
-                  <Calendar className="text-amber-600 dark:text-amber-400 w-6 h-6" />
-                </div>
-                <div>
-                  <h4 className="font-bold text-amber-900 dark:text-amber-100">Saturday Discount Day!</h4>
-                  <p className="text-amber-700 dark:text-amber-300 text-sm">Save up to 40% every Saturday. Normal clothes at $1.50/kg and blankets at $4.00.</p>
-                </div>
-              </section>
+              {saturday && (
+                <section className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 rounded-3xl p-6 flex items-center gap-4">
+                  <div className="bg-amber-100 dark:bg-amber-900/20 p-3 rounded-2xl">
+                    <Calendar className="text-amber-600 dark:text-amber-400 w-6 h-6" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-amber-900 dark:text-amber-100">Saturday Discount Day!</h4>
+                    <p className="text-amber-700 dark:text-amber-300 text-sm">Save up to 40% every Saturday. Normal clothes at $1.50/kg and blankets at $4.00.</p>
+                  </div>
+                </section>
+              )}
             </motion.div>
           )}
 
@@ -723,16 +724,19 @@ export default function App() {
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
               className="space-y-6"
             >
               <div className="flex items-center gap-4 mb-6">
                 <button 
-                  onClick={() => setView('home')}
+                  onClick={() => { hapticClick(); setView('home'); }}
                   className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors"
                 >
                   <ChevronRight className="w-6 h-6 rotate-180 dark:text-zinc-400" />
                 </button>
-                <h2 className="text-2xl font-display font-bold dark:text-white">Place Your Order</h2>
+                <h2 className="text-2xl font-display font-bold dark:text-white">
+                  {editingOrder ? 'Edit Your Order' : 'Place Your Order'}
+                </h2>
               </div>
 
               <form onSubmit={handlePlaceOrder} className="space-y-6">
@@ -791,7 +795,7 @@ export default function App() {
                       <div className="flex items-center gap-4">
                         <button 
                           type="button"
-                          onClick={() => setFormData({...formData, weight: Math.max(0, formData.weight - 0.5)})}
+                          onClick={() => { hapticClick(); setFormData({...formData, weight: Math.max(0, formData.weight - 0.5)}); }}
                           className="p-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-800 dark:text-white"
                         >
                           <Minus className="w-4 h-4" />
@@ -799,7 +803,7 @@ export default function App() {
                         <span className="w-12 text-center font-display font-bold text-lg dark:text-white">{formData.weight}</span>
                         <button 
                           type="button"
-                          onClick={() => setFormData({...formData, weight: formData.weight + 0.5})}
+                          onClick={() => { hapticClick(); setFormData({...formData, weight: formData.weight + 0.5}); }}
                           className="p-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-800 dark:text-white"
                         >
                           <Plus className="w-4 h-4" />
@@ -815,7 +819,7 @@ export default function App() {
                       <div className="flex items-center gap-4">
                         <button 
                           type="button"
-                          onClick={() => setFormData({...formData, blankets: Math.max(0, formData.blankets - 1)})}
+                          onClick={() => { hapticClick(); setFormData({...formData, blankets: Math.max(0, formData.blankets - 1)}); }}
                           className="p-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-800 dark:text-white"
                         >
                           <Minus className="w-4 h-4" />
@@ -823,7 +827,7 @@ export default function App() {
                         <span className="w-12 text-center font-display font-bold text-lg dark:text-white">{formData.blankets}</span>
                         <button 
                           type="button"
-                          onClick={() => setFormData({...formData, blankets: formData.blankets + 1})}
+                          onClick={() => { hapticClick(); setFormData({...formData, blankets: formData.blankets + 1}); }}
                           className="p-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-800 dark:text-white"
                         >
                           <Plus className="w-4 h-4" />
@@ -838,7 +842,6 @@ export default function App() {
                     <MapPin className="w-5 h-5 text-sky-500" />
                     Pickup Location
                   </h3>
-                  <p className="text-sm text-zinc-500 dark:text-zinc-400">Your saved location is pinned. Tap to update for this order.</p>
                   <MapPicker 
                     initialPos={(formData.lat && formData.lng) ? [formData.lat, formData.lng] : undefined}
                     onLocationSelect={(lat, lng, name) => setFormData({...formData, lat, lng, location_name: name || ''})} 
@@ -854,7 +857,7 @@ export default function App() {
                   </div>
                 )}
 
-                <div className="sticky bottom-4 bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-2xl flex items-center justify-between gap-4">
+                <div className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-2xl flex items-center justify-between gap-4">
                   <div>
                     <p className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase">Estimated Total</p>
                     <p className="text-3xl font-display font-bold text-sky-600 dark:text-sky-400">
@@ -863,7 +866,8 @@ export default function App() {
                   </div>
                   <button 
                     disabled={loading}
-                    className="bg-sky-600 text-white px-8 py-4 rounded-2xl font-bold hover:bg-sky-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-sky-200 dark:shadow-sky-900/20"
+                    onClick={() => hapticClick()}
+                    className="bg-sky-600 text-white px-8 py-4 rounded-2xl font-bold hover:bg-sky-700 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-sky-200 dark:shadow-sky-900/20"
                   >
                     {loading ? 'Processing...' : 'Confirm Pickup'}
                   </button>
@@ -878,20 +882,21 @@ export default function App() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
               className="max-w-xl mx-auto"
             >
               <div className="bg-white dark:bg-zinc-900 p-8 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm space-y-6">
                 <div className="text-center space-y-2">
                   <h2 className="text-2xl font-display font-bold dark:text-white">
-                    {authMode === 'login' ? 'Welcome Back' : 'Create Account'}
+                    {authMode === 'login' ? 'Welcome Back' : authMode === 'signup' ? 'Create Account' : 'Recover Password'}
                   </h2>
                   <p className="text-zinc-500 dark:text-zinc-400 text-sm">
-                    {authMode === 'login' ? 'Login to access your order history' : 'Sign up to start ordering laundry service'}
+                    {authMode === 'login' ? 'Login to access your order history' : authMode === 'signup' ? 'Sign up to start ordering laundry service' : 'Enter your email to recover your password'}
                   </p>
                 </div>
 
                 <form onSubmit={handleAuth} className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className={`grid grid-cols-1 ${authMode === 'signup' ? 'md:grid-cols-2' : ''} gap-4`}>
                     {authMode === 'signup' && (
                       <>
                         <div className="space-y-1">
@@ -929,17 +934,19 @@ export default function App() {
                         onChange={e => setAuthForm({...authForm, email: e.target.value})}
                       />
                     </div>
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Password</label>
-                      <input 
-                        required
-                        type="password" 
-                        placeholder="••••••••"
-                        className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all"
-                        value={authForm.password}
-                        onChange={e => setAuthForm({...authForm, password: e.target.value})}
-                      />
-                    </div>
+                    {authMode !== 'recover' && (
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Password</label>
+                        <input 
+                          required
+                          type="password" 
+                          placeholder="••••••••"
+                          className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all"
+                          value={authForm.password}
+                          onChange={e => setAuthForm({...authForm, password: e.target.value})}
+                        />
+                      </div>
+                    )}
                     {authMode === 'signup' && (
                       <>
                         <div className="space-y-1">
@@ -981,35 +988,76 @@ export default function App() {
                           onChange={e => setAuthForm({...authForm, address: e.target.value})}
                         />
                       </div>
-                      <div className="space-y-2">
-                        <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Set Your Location on Map</label>
-                        <MapPicker 
-                          onLocationSelect={(lat, lng, name) => setAuthForm({...authForm, lat, lng, location_name: name || ''})} 
-                        />
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2 text-sky-600 dark:text-sky-400">
+                          <MapPin className="w-4 h-4" />
+                          <label className="text-sm font-bold uppercase tracking-wider">Pin Your Location (Required)</label>
+                        </div>
+                        <div className="rounded-2xl overflow-hidden border-2 border-sky-100 dark:border-sky-900/30 shadow-inner">
+                          <MapPicker 
+                            onLocationSelect={(lat, lng, name) => setAuthForm({...authForm, lat, lng, location_name: name || ''})} 
+                          />
+                        </div>
                         {authForm.location_name && (
-                          <p className="text-xs text-sky-600 dark:text-sky-400 font-medium">Detected: {authForm.location_name}</p>
+                          <p className="text-xs text-zinc-500 dark:text-zinc-400 italic bg-zinc-50 dark:bg-zinc-950 p-2 rounded-lg">
+                            Selected: {authForm.location_name}
+                          </p>
                         )}
                       </div>
                     </div>
                   )}
 
-                  {error && <p className="text-red-500 text-xs font-medium">{error}</p>}
+                  {error && <p className="text-red-500 text-xs font-medium bg-red-50 dark:bg-red-900/10 p-3 rounded-xl border border-red-100 dark:border-red-900/20">{error}</p>}
+                  
+                  {recoveryPassword && (
+                    <div className="bg-emerald-50 dark:bg-emerald-900/10 p-4 rounded-2xl border border-emerald-100 dark:border-emerald-900/20 space-y-2">
+                      <p className="text-emerald-800 dark:text-emerald-300 text-sm font-medium">Password found!</p>
+                      <p className="text-2xl font-mono font-bold text-emerald-600 dark:text-emerald-400 tracking-wider">{recoveryPassword}</p>
+                      <button 
+                        type="button"
+                        onClick={() => { setAuthMode('login'); setRecoveryPassword(''); }}
+                        className="text-xs text-emerald-700 dark:text-emerald-400 underline"
+                      >
+                        Back to Login
+                      </button>
+                    </div>
+                  )}
 
                   <button 
                     disabled={loading}
-                    className="w-full bg-sky-600 text-white py-4 rounded-2xl font-bold hover:bg-sky-700 transition-all disabled:opacity-50 shadow-lg shadow-sky-200 dark:shadow-sky-900/20"
+                    type="submit"
+                    onClick={() => hapticClick()}
+                    className="w-full bg-sky-600 text-white py-4 rounded-2xl font-bold hover:bg-sky-700 active:scale-95 transition-all disabled:opacity-50 shadow-lg shadow-sky-200 dark:shadow-sky-900/20"
                   >
-                    {loading ? 'Processing...' : authMode === 'login' ? 'Login' : 'Sign Up'}
+                    {loading ? 'Processing...' : authMode === 'login' ? 'Login' : authMode === 'signup' ? 'Sign Up' : 'Recover Password'}
                   </button>
                 </form>
 
-                <div className="text-center">
+                <div className="flex flex-col gap-3 text-center">
                   <button 
-                    onClick={() => setAuthMode(authMode === 'login' ? 'signup' : 'login')}
-                    className="text-sm text-zinc-500 dark:text-zinc-400 hover:text-sky-600 dark:hover:text-sky-400 transition-colors"
+                    onClick={() => { hapticClick(); setAuthMode(authMode === 'login' ? 'signup' : 'login'); setError(''); setRecoveryPassword(''); }}
+                    className="text-sm text-zinc-500 dark:text-zinc-400 hover:text-sky-600 dark:hover:text-sky-400 transition-colors font-medium"
                   >
                     {authMode === 'login' ? "Don't have an account? Sign Up" : "Already have an account? Login"}
                   </button>
+                  
+                  {authMode === 'login' && (
+                    <button 
+                      onClick={() => { hapticClick(); setAuthMode('recover'); setError(''); }}
+                      className="text-xs text-zinc-400 dark:text-zinc-500 hover:text-sky-600 dark:hover:text-sky-400 transition-colors"
+                    >
+                      Forgot your password?
+                    </button>
+                  )}
+                  
+                  {authMode === 'recover' && (
+                    <button 
+                      onClick={() => { hapticClick(); setAuthMode('login'); setError(''); setRecoveryPassword(''); }}
+                      className="text-xs text-zinc-400 dark:text-zinc-500 hover:text-sky-600 dark:hover:text-sky-400 transition-colors"
+                    >
+                      Back to Login
+                    </button>
+                  )}
                 </div>
               </div>
             </motion.div>
@@ -1021,11 +1069,12 @@ export default function App() {
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
               className="max-w-xl mx-auto"
             >
               <div className="flex items-center gap-4 mb-6">
                 <button 
-                  onClick={() => setView('home')}
+                  onClick={() => { hapticClick(); setView('home'); }}
                   className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors"
                 >
                   <ChevronRight className="w-6 h-6 rotate-180 dark:text-zinc-400" />
@@ -1117,15 +1166,22 @@ export default function App() {
                       initialPos={(user?.lat && user?.lng) ? [user.lat, user.lng] : undefined}
                       onLocationSelect={(lat, lng, name) => setAuthForm({...authForm, lat, lng, location_name: name || ''})} 
                     />
-                    {authForm.location_name && (
-                      <p className="text-xs text-sky-600 dark:text-sky-400 font-medium">Detected: {authForm.location_name}</p>
-                    )}
                   </div>
 
                   <button 
-                    className="w-full bg-sky-600 text-white py-4 rounded-2xl font-bold hover:bg-sky-700 transition-all shadow-lg shadow-sky-200 dark:shadow-sky-900/20"
+                    onClick={() => hapticClick()}
+                    className="w-full bg-sky-600 text-white py-4 rounded-2xl font-bold hover:bg-sky-700 active:scale-95 transition-all shadow-lg shadow-sky-200 dark:shadow-sky-900/20"
                   >
                     Save Changes
+                  </button>
+
+                  <button 
+                    type="button"
+                    onClick={() => { hapticClick(); handleLogout(); }}
+                    className="w-full mt-4 flex items-center justify-center gap-2 py-4 border border-red-200 dark:border-red-900/30 text-red-600 dark:text-red-400 rounded-2xl font-bold hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                  >
+                    <LogOut className="w-5 h-5" />
+                    Logout
                   </button>
                 </form>
               </div>
@@ -1138,11 +1194,12 @@ export default function App() {
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
               className="space-y-6"
             >
               <div className="flex items-center gap-4 mb-6">
                 <button 
-                  onClick={() => setView('home')}
+                  onClick={() => { hapticClick(); setView('home'); }}
                   className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors"
                 >
                   <ChevronRight className="w-6 h-6 rotate-180 dark:text-zinc-400" />
@@ -1157,7 +1214,7 @@ export default function App() {
                   </div>
                   <p className="text-zinc-500 dark:text-zinc-400">No recent orders found.</p>
                   <button 
-                    onClick={() => setView('order')}
+                    onClick={() => { hapticClick(); setView('order'); }}
                     className="text-sky-600 dark:text-sky-400 font-bold hover:underline"
                   >
                     Place your first order
@@ -1169,11 +1226,12 @@ export default function App() {
                     <button
                       key={order.id}
                       onClick={() => {
+                        hapticClick();
                         setOrderId(order.id);
                         setView('track');
                         handleTrack();
                       }}
-                      className="w-full bg-white dark:bg-zinc-900 p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm flex items-center justify-between hover:border-sky-500 transition-colors group"
+                      className="w-full bg-white dark:bg-zinc-900 p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm flex items-center justify-between hover:border-sky-500 active:scale-[0.98] transition-all group"
                     >
                       <div className="flex items-center gap-4">
                         <div className="bg-sky-50 dark:bg-sky-900/20 p-2 rounded-xl group-hover:bg-sky-100 dark:group-hover:bg-sky-900/40 transition-colors">
@@ -1206,11 +1264,12 @@ export default function App() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
               className="space-y-6"
             >
               <div className="flex items-center gap-4 mb-6">
                 <button 
-                  onClick={() => { setView('home'); setTrackingOrder(null); }}
+                  onClick={() => { hapticClick(); setView('home'); setTrackingOrder(null); }}
                   className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors"
                 >
                   <ChevronRight className="w-6 h-6 rotate-180 dark:text-zinc-400" />
@@ -1228,7 +1287,7 @@ export default function App() {
                     <p className="text-zinc-500 dark:text-zinc-400 text-sm">Select an order from your history to see its current status.</p>
                   </div>
                   <button 
-                    onClick={() => setView('history')}
+                    onClick={() => { hapticClick(); setView('history'); }}
                     className="bg-sky-600 text-white px-8 py-3 rounded-2xl font-bold hover:bg-sky-700 transition-colors mx-auto"
                   >
                     View Order History
@@ -1262,13 +1321,36 @@ export default function App() {
                       </div>
                     </div>
                     {trackingOrder.status === 'Pending' && (
-                      <button 
-                        onClick={() => handleCancelOrder(trackingOrder.id)}
-                        className="w-full mt-4 flex items-center justify-center gap-2 py-3 border border-red-200 dark:border-red-900/30 text-red-600 dark:text-red-400 rounded-2xl font-bold hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                      >
-                        <XCircle className="w-4 h-4" />
-                        Cancel Order
-                      </button>
+                      <div className="flex flex-col gap-2 mt-4">
+                        <button 
+                          onClick={() => { 
+                            hapticClick(); 
+                            setEditingOrder(trackingOrder);
+                            setFormData({
+                              name: trackingOrder.customer_name,
+                              phone: trackingOrder.phone,
+                              address: trackingOrder.address,
+                              weight: trackingOrder.clothes_weight,
+                              blankets: trackingOrder.blankets_count,
+                              lat: trackingOrder.lat,
+                              lng: trackingOrder.lng,
+                              location_name: trackingOrder.address // Using address as location name if separate field not in Order
+                            });
+                            setView('order');
+                          }}
+                          className="w-full flex items-center justify-center gap-2 py-3 bg-sky-50 dark:bg-sky-900/20 text-sky-600 dark:text-sky-400 rounded-2xl font-bold hover:bg-sky-100 dark:hover:bg-sky-900/40 transition-colors"
+                        >
+                          <Edit className="w-4 h-4" />
+                          Edit Order
+                        </button>
+                        <button 
+                          onClick={() => { hapticClick(); handleCancelOrder(trackingOrder.id); }}
+                          className="w-full flex items-center justify-center gap-2 py-3 border border-red-200 dark:border-red-900/30 text-red-600 dark:text-red-400 rounded-2xl font-bold hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                        >
+                          <XCircle className="w-4 h-4" />
+                          Cancel Order
+                        </button>
+                      </div>
                     )}
                   </div>
 
@@ -1318,7 +1400,7 @@ export default function App() {
                   )}
 
                   <button 
-                    onClick={() => { setTrackingOrder(null); setView('history'); }}
+                    onClick={() => { hapticClick(); setTrackingOrder(null); setView('history'); }}
                     className="w-full py-4 text-zinc-500 dark:text-zinc-400 font-bold hover:text-zinc-900 dark:hover:white transition-colors"
                   >
                     Track another order
@@ -1330,11 +1412,22 @@ export default function App() {
         </AnimatePresence>
       </main>
 
-      <footer className="bg-zinc-900 dark:bg-black text-white p-8 pb-12 transition-colors">
+      {user && (
+        <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-xl border-t border-zinc-200/50 dark:border-zinc-800/50 px-6 pt-3 pb-[calc(env(safe-area-inset-bottom,0px)+12px)]">
+          <div className="max-w-4xl mx-auto flex justify-between items-center">
+            <NavButton target="home" icon={Circle} label="Home" />
+            <NavButton target="order" icon={Plus} label="New" />
+            <NavButton target="history" icon={History} label="Orders" />
+            <NavButton target="settings" icon={Settings} label="Profile" />
+          </div>
+        </nav>
+      )}
+
+      <footer className="bg-zinc-900 dark:bg-black text-white p-8 pb-32 transition-colors">
         <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8">
           <div className="space-y-4">
             <div className="flex items-center gap-2">
-              <BubblesIcon className="text-sky-400 w-6 h-6" />
+              <BubblesIcon className="w-8 h-8" />
               <h2 className="text-xl font-display font-bold uppercase tracking-widest">bubbletz</h2>
             </div>
             <p className="text-zinc-400 text-sm max-w-xs">

@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-lea
 import L from 'leaflet';
 import { TANZANIA_BOUNDS } from '../constants';
 import { Navigation, MapPin, Loader2 } from 'lucide-react';
+import { Geolocation } from '@capacitor/geolocation';
 
 // Use CDN for leaflet icons to avoid bundling issues
 const iconUrl = 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png';
@@ -77,55 +78,44 @@ export default function MapPicker({ onLocationSelect, initialPos }: MapPickerPro
   const MapContainerAny = MapContainer as any;
   const TileLayerAny = TileLayer as any;
 
-  const handleAutoDetect = () => {
+  const handleAutoDetect = async () => {
     setLocating(true);
     
-    if (!window.isSecureContext) {
-      alert("Location features require a secure connection (HTTPS). Please check your connection.");
-      setLocating(false);
-      return;
-    }
-
-    if (!navigator.geolocation) {
-      alert("Geolocation is not supported by your browser");
-      setLocating(false);
-      return;
-    }
-
-    const options: PositionOptions = {
-      enableHighAccuracy: true,
-      timeout: 10000,
-      maximumAge: 0
-    };
-
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const { latitude, longitude, accuracy } = position.coords;
-        console.log(`Detected location: ${latitude}, ${longitude} (Accuracy: ${accuracy}m)`);
-        
-        try {
-          const name = await getAddress(latitude, longitude);
-          onLocationSelect(latitude, longitude, name);
-          window.dispatchEvent(new CustomEvent('map-fly-to', { detail: { lat: latitude, lng: longitude } }));
-        } catch (e) {
-          console.error("Error processing detected location:", e);
-          onLocationSelect(latitude, longitude, `Location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`);
-        } finally {
+    try {
+      // Check for permissions first
+      const permission = await Geolocation.checkPermissions();
+      
+      if (permission.location !== 'granted' && permission.location !== 'limited') {
+        const request = await Geolocation.requestPermissions();
+        if (request.location !== 'granted' && request.location !== 'limited') {
+          alert("Location permission denied. Please enable location access in your device settings.");
           setLocating(false);
+          return;
         }
-      },
-      (error) => {
-        console.error("Geolocation error:", error);
-        let msg = "Unable to retrieve your location.";
-        if (error.code === 1) msg = "Location permission denied. Please enable location access in your browser settings.";
-        else if (error.code === 2) msg = "Location unavailable. Ensure GPS is on and try moving outdoors.";
-        else if (error.code === 3) msg = "Location request timed out. Please try again or tap the map.";
-        
-        alert(msg);
-        setLocating(false);
-      },
-      options
-    );
+      }
+
+      const position = await Geolocation.getCurrentPosition({
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0
+      });
+
+      const { latitude, longitude } = position.coords;
+      console.log(`Detected location: ${latitude}, ${longitude}`);
+      
+      const name = await getAddress(latitude, longitude);
+      onLocationSelect(latitude, longitude, name);
+      window.dispatchEvent(new CustomEvent('map-fly-to', { detail: { lat: latitude, lng: longitude } }));
+    } catch (error: any) {
+      console.error("Geolocation error:", error);
+      let msg = "Unable to retrieve your location.";
+      if (error.message.includes("denied")) msg = "Location permission denied. Please enable location access in settings.";
+      else if (error.message.includes("timeout")) msg = "Location request timed out. Please try again or tap the map.";
+      
+      alert(msg);
+    } finally {
+      setLocating(false);
+    }
   };
 
   return (
