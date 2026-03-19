@@ -3,6 +3,8 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+"author": "REBI group <bubblestzlaundry@gmail.com>",
+  "license": "Proprietary",
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build",

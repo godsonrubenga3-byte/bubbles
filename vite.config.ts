@@ -39,7 +39,7 @@ export default defineConfig(({ mode }) => {
         manifest: {
           name: 'bubbletz',
           short_name: 'bubbletz',
-          description: 'Premium laundry service in Dar es Salaam',
+          description: 'Premium laundry service in dar es saam',
           theme_color: '#ffffff',
           background_color: '#ffffff',
           display: 'standalone',
