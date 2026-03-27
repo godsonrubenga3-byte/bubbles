@@ -21,10 +21,6 @@
       ]
     },
     "allowImportingTsExtensions": true,
-    "noEmit": true,
-    "types": [
-      "vite-plugin-pwa/client",
-      "vite-plugin-pwa/react"
-    ]
+    "noEmit": true
   }
 }

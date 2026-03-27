@@ -1,7 +1,0 @@
-<?xml version='1.0' encoding='utf-8'?>
-<resources>
-    <string name="app_name">bubbletz</string>
-    <string name="title_activity_main">bubbletz</string>
-    <string name="package_name">com.bubbles.app</string>
-    <string name="custom_url_scheme">com.bubbles.app</string>
-</resources>

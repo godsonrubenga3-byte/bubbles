@@ -1,120 +1,48 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
-  Circle, 
+  Droplets, 
   MapPin, 
   Package, 
-  Truck, 
   Clock, 
   CheckCircle2, 
-  Search, 
-  Plus, 
-  Minus, 
-  Calendar,
   ChevronRight,
-  Info,
-  History,
   Phone,
   User,
   LogOut,
   XCircle,
   Sun,
   Moon,
-  Settings,
+  LayoutDashboard,
   Navigation,
-  MessageSquare,
-  Map as MapIcon,
-  Bell,
-  Mail
+  ArrowRight
 } from 'lucide-react';
-import ReloadPrompt from './components/ReloadPrompt';
-
-const BubblesIcon = ({ className }: { className?: string }) => (
-  <img 
-    src="/android-icon-192x192.png" 
-    alt="bubbletz logo" 
-    className={cn("object-contain", className)}
-  />
-);
-
-interface AppNotification {
-  id: string;
-  title: string;
-  message: string;
-  type: 'info' | 'success' | 'warning';
-}
-
-function NotificationToast({ notification, onDismiss }: { notification: AppNotification, onDismiss: (id: string) => void }) {
-  useEffect(() => {
-    const timer = setTimeout(() => onDismiss(notification.id), 5000);
-    return () => clearTimeout(timer);
-  }, [notification, onDismiss]);
-
-  return (
-    <motion.div
-      initial={{ x: 100, opacity: 0 }}
-      animate={{ x: 0, opacity: 1 }}
-      exit={{ x: 100, opacity: 0 }}
-      className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-4 shadow-xl flex items-start gap-3 w-80 mb-3 pointer-events-auto"
-    >
-      <div className={cn(
-        "p-2 rounded-xl mt-0.5",
-        notification.type === 'success' ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" :
-        notification.type === 'warning' ? "bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400" :
-        "bg-sky-100 text-sky-600 dark:bg-sky-900/30 dark:text-sky-400"
-      )}>
-        <Bell className="w-4 h-4" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-bold dark:text-white truncate">{notification.title}</p>
-        <p className="text-xs text-zinc-500 dark:text-zinc-400 line-clamp-2 mt-0.5">{notification.message}</p>
-      </div>
-      <button onClick={() => onDismiss(notification.id)} className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200">
-        <XCircle className="w-4 h-4" />
-      </button>
-    </motion.div>
-  );
-}
-
-import { io } from 'socket.io-client';
 import MapPicker from './components/MapPicker';
-import { calculatePrice, isSaturday, PRICING, getApiUrl, API_BASE_URL } from './constants';
+import { isSaturday, DAR_ES_SALAAM_BOUNDS } from './constants';
 import { cn } from './cn';
-import { Haptics, ImpactStyle } from '@capacitor/haptics';
 
-const hapticClick = async () => {
-  try {
-    await Haptics.impact({ style: ImpactStyle.Light });
-  } catch (e) {
-    // Fallback for browser
-  }
-};
-
-const hapticSuccess = async () => {
-  try {
-    await Haptics.notification({ type: 'SUCCESS' as any });
-  } catch (e) {
-    // Fallback for browser
-  }
-};
-
-type OrderStatus = 'Pending' | 'Picked Up' | 'Washing' | 'Drying' | 'Ready for Delivery' | 'Delivered' | 'Cancelled';
+type OrderStatus = 'Pending' | 'Driver Assigned' | 'Picked Up' | 'At Shop' | 'Washing' | 'Drying' | 'Ready for Delivery' | 'Out for Delivery' | 'Delivered' | 'Cancelled';
 
 interface UserData {
   id: string;
   email: string;
   name: string;
-  username: string;
-  phone: string;
-  is_whatsapp: boolean;
+  role: 'customer' | 'driver';
+}
+
+interface Shop {
+  id: string;
+  name: string;
   address: string;
   lat: number;
   lng: number;
-  location_name?: string;
 }
 
 interface Order {
   id: string;
+  user_id: string;
+  driver_id: string | null;
+  shop_id: string | null;
   customer_name: string;
   phone: string;
   address: string;
@@ -129,750 +57,484 @@ interface Order {
 
 export default function App() {
   const [darkMode, setDarkMode] = useState(() => {
-    try {
-      const saved = localStorage.getItem('bubbletz_theme');
-      return saved === 'dark';
-    } catch {
-      return false;
-    }
+    const saved = localStorage.getItem('bubbles_theme');
+    return saved === 'dark';
   });
 
   useEffect(() => {
     if (darkMode) {
       document.documentElement.classList.add('dark');
-      localStorage.setItem('bubbletz_theme', 'dark');
+      localStorage.setItem('bubbles_theme', 'dark');
     } else {
       document.documentElement.classList.remove('dark');
-      localStorage.setItem('bubbletz_theme', 'light');
+      localStorage.setItem('bubbles_theme', 'light');
     }
   }, [darkMode]);
 
   const [user, setUser] = useState<UserData | null>(() => {
-    try {
-      const saved = localStorage.getItem('bubbletz_user');
-      if (!saved) return null;
-      const parsed = JSON.parse(saved);
-      return (parsed && typeof parsed === 'object' && parsed.id) ? parsed : null;
-    } catch (err) {
-      console.error("Failed to parse user from localStorage", err);
-      return null;
-    }
+    const saved = localStorage.getItem('bubbles_user');
+    return saved ? JSON.parse(saved) : null;
   });
-
-  const [view, setView] = useState<'home' | 'order' | 'track' | 'history' | 'auth' | 'settings'>(() => {
-    return user ? 'home' : 'auth';
-  });
-
-  const [authMode, setAuthMode] = useState<'login' | 'signup' | 'recover'>('login');
-  const [recoveryPassword, setRecoveryPassword] = useState('');
-  const [authForm, setAuthForm] = useState({ 
-    email: '', 
-    password: '', 
-    name: '', 
-    username: '', 
-    phone: '', 
-    is_whatsapp: true,
-    address: '',
-    lat: 0,
-    lng: 0,
-    location_name: ''
-  });
-
-  const [orderHistory, setOrderHistory] = useState<Order[]>(() => {
-    try {
-      const saved = localStorage.getItem('bubbletz_orders');
-      if (!saved) return [];
-      const parsed = JSON.parse(saved);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  });
-
-  const [orderId, setOrderId] = useState('');
-  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
-  const [trackingOrder, setTrackingOrder] = useState<Order | null>(null);
+  const [view, setView] = useState<'driver' | 'auth'>('driver');
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('signup');
+  const [authForm, setAuthForm] = useState({ email: '', password: '', name: '', role: 'driver' as const });
+  const [availableOrders, setAvailableOrders] = useState<Order[]>([]);
+  const [myDriverOrders, setMyDriverOrders] = useState<Order[]>([]);
+  const [shops, setShops] = useState<Shop[]>([]);
+  const [driverFilter, setDriverFilter] = useState<'all' | 'pickup' | 'delivery'>('all');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [notifications, setNotifications] = useState<AppNotification[]>([]);
-
-  const addNotification = (title: string, message: string, type: AppNotification['type'] = 'info') => {
-    const id = Math.random().toString(36).substr(2, 9);
-    setNotifications(prev => [{ id, title, message, type }, ...prev]);
-  };
-
-  const dismissNotification = (id: string) => {
-    setNotifications(prev => prev.filter(n => n.id !== id));
-  };
-
-  // Real-time WebSocket connection for status updates
-  useEffect(() => {
-    if (!user) return;
-
-    const socket = io(API_BASE_URL);
-
-    socket.on("connect", () => {
-      console.log("Connected to WebSocket");
-      socket.emit("join", user.id);
-    });
-
-    socket.on("order_status_update", (data: { orderId: string, status: OrderStatus, message: string }) => {
-      setOrderHistory(prev => prev.map(o => 
-        o.id === data.orderId ? { ...o, status: data.status } : o
-      ));
-
-      if (trackingOrder && trackingOrder.id === data.orderId) {
-        setTrackingOrder(prev => prev ? { ...prev, status: data.status } : null);
-      }
-
-      addNotification('Order Updated', data.message, 'success');
-    });
-
-    return () => {
-      socket.disconnect();
-    };
-  }, [user, trackingOrder?.id]);
-
-  const [formData, setFormData] = useState({
-    name: '',
-    phone: '',
-    address: '',
-    weight: 0,
-    blankets: 0,
-    lat: 0,
-    lng: 0,
-    location_name: ''
-  });
 
   const saturday = isSaturday();
-  formData.address = formData.location_name || formData.address;
+
   useEffect(() => {
-    if (user) {
-      setFormData(prev => ({
-        ...prev,
-        name: user.name || '',
-        phone: user.phone || '',
-        address: user.address || '',
-        lat: user.lat || 0,
-        lng: user.lng || 0,
-        location_name: user.location_name || ''
-      }));
-      fetchUserHistory();
-    }
+    fetchDriverData();
   }, [user]);
 
-  useEffect(() => {
-    if (orderHistory.length > 0) {
-      localStorage.setItem('bubbletz_orders', JSON.stringify(orderHistory));
-    }
-  }, [orderHistory]);
-
-  const fetchUserHistory = async () => {
-    if (!user) return;
+  const fetchDriverData = async () => {
     try {
-      const response = await fetch(getApiUrl(`/api/orders/user/${user.id}`));
-      if (response.ok) {
-        const orders = await response.json();
-        setOrderHistory(orders);
-
-        if (trackingOrder) {
-          const updated = orders.find((o: Order) => o.id === trackingOrder.id);
-          if (updated && updated.status !== trackingOrder.status) {
-            setTrackingOrder(updated);
-            addNotification('Status Update', `Order ${updated.id} is now ${updated.status}!`, 'success');
-          }
-        }
+      const requests: Promise<Response>[] = [
+        fetch('/api/driver/available-orders'),
+        fetch('/api/shops')
+      ];
+      
+      if (user && user.role === 'driver') {
+        requests.push(fetch(`/api/driver/my-orders/${user.id}`));
       }
+
+      const results = await Promise.all(requests);
+      
+      if (results[0].ok) setAvailableOrders(await results[0].json());
+      if (results[1].ok) setShops(await results[1].json());
+      if (results[2] && results[2].ok) setMyDriverOrders(await results[2].json());
     } catch (err) {
-      console.error("Failed to fetch history", err);
+      console.error("Failed to fetch driver data", err);
     }
   };
 
-  useEffect(() => {
-    if (!user) return;
-    const poll = () => {
-      if (document.visibilityState === 'visible') {
-        fetchUserHistory();
+  const acceptOrder = async (orderId: string) => {
+    if (!user) {
+      setAuthMode('signup');
+      setAuthForm({ ...authForm, role: 'driver' });
+      setView('auth');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch('/api/driver/accept-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, driverId: user.id })
+      });
+      if (res.ok) {
+        fetchDriverData();
+      } else {
+        const data = await res.json();
+        setError(data.error || 'Failed to accept order');
       }
-    };
-    poll();
-    const pollingInterval = setInterval(poll, 1000); 
-    return () => clearInterval(pollingInterval);
-  }, [user, trackingOrder?.id, trackingOrder?.status]); 
+    } catch (err) {
+      setError('An error occurred');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const syncToSupabase = async (userData: UserData) => {
-    localStorage.setItem('bubbletz_user', JSON.stringify(userData));
-    setUser(userData);
+  const updateOrderStatus = async (orderId: string, status: OrderStatus, shopId?: string) => {
+    if (!user) return;
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch('/api/driver/update-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId, status, shopId, driverId: user.id })
+      });
+      if (res.ok) {
+        fetchDriverData();
+      } else {
+        const data = await res.json();
+        setError(data.error || 'Failed to update status');
+      }
+    } catch (err) {
+      setError('An error occurred');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
-    setRecoveryPassword('');
-
-    if (authMode === 'signup' && authForm.lat === 0) {
-      setError('Please select your location on the map');
-      setLoading(false);
-      return;
-    }
-
+    const endpoint = authMode === 'login' ? '/api/login' : '/api/signup';
     try {
-      if (authMode === 'recover') {
-        const response = await fetch(getApiUrl('/api/recover-password'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: authForm.email }),
-        });
-
-        if (!response.ok) {
-          const data = await response.json();
-          throw new Error(data.error || 'Recovery failed');
-        }
-
-        const data = await response.json();
-        setRecoveryPassword(data.password);
-        return;
-      }
-
-      const endpoint = authMode === 'signup' ? '/api/signup' : '/api/login';
-      const response = await fetch(getApiUrl(endpoint), {
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(authMode === 'signup' ? authForm : { email: authForm.email, password: authForm.password }),
+        body: JSON.stringify(authForm)
       });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Authentication failed');
-      }
-
-      const userData = await response.json();
-      await syncToSupabase(userData);
-      setView('home');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Auth failed');
+      
+      const userData = data.user || data; // Handle both login and signup response formats
+      setUser(userData);
+      localStorage.setItem('bubbles_user', JSON.stringify(userData));
+      setView('driver');
     } catch (err: any) {
-      setError(err.message || 'Authentication failed');
+      setError(err.message);
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleUpdateProfile = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
-    
-    const updatedUser = { 
-      ...user, 
-      ...authForm, 
-      id: user.id,
-      address: authForm.address || user.address || ''
-    };
-    setUser(updatedUser);
-    localStorage.setItem('bubbletz_user', JSON.stringify(updatedUser));
-    alert('Profile updated successfully!');
-    setView('home');
   };
 
   const handleLogout = () => {
     setUser(null);
-    localStorage.removeItem('bubbletz_user');
-    setView('auth');
-  };
-
-  const handleCancelOrder = async (id: string) => {
-    if (!confirm('Are you sure you want to cancel this order?')) return;
-    setLoading(true);
-    try {
-      const response = await fetch(getApiUrl(`/api/orders/${id}/cancel`), { method: 'POST' });
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to cancel order');
-      }
-      setOrderHistory(prev => prev.map(o => o.id === id ? { ...o, status: 'Cancelled' } : o));
-      if (trackingOrder && trackingOrder.id === id) {
-        setTrackingOrder({ ...trackingOrder, status: 'Cancelled' });
-      }
-    } catch (err: any) {
-      alert(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleTrack = async (e?: React.FormEvent) => {
-    e?.preventDefault();
-    if (!orderId) return;
-    setLoading(true);
-    setError('');
-    try {
-      const response = await fetch(getApiUrl(`/api/orders/${orderId}`));
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to fetch order');
-      }
-      
-      const order = await response.json();
-      setTrackingOrder(order);
-    } catch (err: any) {
-      console.error("Tracking error:", err);
-      setError(err.message);
-      setTrackingOrder(null);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handlePlaceOrder = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (formData.weight === 0 && formData.blankets === 0) {
-      setError('Please add some items to your order');
-      return;
-    }
-    if (formData.lat === 0) {
-      setError('Please select your location on the map');
-      return;
-    }
-
-    setLoading(true);
-    setError('');
-    
-    const timestamp = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
-    const totalPrice = calculatePrice(formData.weight, formData.blankets);
-
-    const orderData = {
-      id: editingOrder ? editingOrder.id : "BBL-" + timestamp.toUpperCase(),
-      user_id: user?.id,
-      customer_name: formData.name,
-      phone: formData.phone,
-      address: formData.address,
-      lat: formData.lat,
-      lng: formData.lng,
-      clothes_weight: formData.weight,
-      blankets_count: formData.blankets,
-      total_price: totalPrice
-    };
-
-    try {
-      const endpoint = editingOrder ? `/api/orders/${editingOrder.id}/update` : '/api/orders';
-      const response = await fetch(getApiUrl(endpoint), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(orderData),
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to place order');
-      }
-
-      if (editingOrder) {
-        const updatedOrder = {
-          ...editingOrder,
-          ...orderData,
-        };
-        setOrderHistory(prev => prev.map(o => o.id === editingOrder.id ? updatedOrder : o));
-        setEditingOrder(null);
-        alert('Order updated successfully!');
-        setView('history');
-      } else {
-        const newOrder: Order = {
-          ...orderData,
-          status: 'Pending',
-          created_at: new Date().toISOString()
-        };
-
-        setOrderHistory([newOrder, ...orderHistory]);
-        setOrderId(orderData.id);
-        hapticSuccess();
-        setShowSuccessModal(true);
-      }
-      
-      setFormData({ 
-        name: user?.name || '', 
-        phone: user?.phone || '', 
-        address: user?.address || '', 
-        weight: 0, 
-        blankets: 0, 
-        lat: user?.lat || 0, 
-        lng: user?.lng || 0,
-        location_name: user?.location_name || ''
-      });
-    } catch (err: any) {
-      console.error("Order error:", err);
-      setError(err.message || "Failed to place order.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const statusSteps: OrderStatus[] = ['Pending', 'Picked Up', 'Washing', 'Drying', 'Ready for Delivery', 'Delivered'];
-  const getStatusIndex = (status: OrderStatus) => statusSteps.indexOf(status);
-
-  const NavButton = ({ target, icon: Icon, label }: { target: any, icon: any, label: string }) => {
-    const isActive = view === target;
-    return (
-      <button 
-        onClick={() => { hapticClick(); setView(target); }}
-        className={cn(
-          "flex flex-col items-center justify-center gap-1 flex-1 py-1 transition-all duration-300",
-          isActive ? "text-sky-600 scale-105" : "text-zinc-400 hover:text-zinc-600 dark:text-zinc-500 dark:hover:text-zinc-300"
-        )}
-      >
-        <div className={cn(
-          "p-1.5 rounded-xl transition-colors",
-          isActive ? "bg-sky-50 dark:bg-sky-900/20" : "bg-transparent"
-        )}>
-          <Icon className={cn("w-6 h-6", isActive ? "fill-current" : "stroke-[1.5px]")} />
-        </div>
-        <span className="text-[10px] font-bold uppercase tracking-wider">{label}</span>
-      </button>
-    );
+    localStorage.removeItem('bubbles_user');
+    setView('driver');
   };
 
   return (
-    <div className="min-h-screen font-sans bg-zinc-50 dark:bg-zinc-950 transition-colors duration-500">
-      <ReloadPrompt />
-      
-      <div className="fixed top-24 right-4 z-[100] pointer-events-none flex flex-col items-end">
-        <AnimatePresence>
-          {notifications.map(n => (
-            <NotificationToast key={n.id} notification={n} onDismiss={dismissNotification} />
-          ))}
-        </AnimatePresence>
-      </div>
-
-      <AnimatePresence>
-        {showSuccessModal && (
-          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => { hapticClick(); setShowSuccessModal(false); }}
-              className="absolute inset-0 bg-black/60 backdrop-blur-md"
-            />
-            <motion.div 
-              initial={{ scale: 0.8, opacity: 0, y: 50 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.8, opacity: 0, y: 50 }}
-              className="relative bg-white dark:bg-zinc-900 w-full max-w-sm rounded-[40px] p-10 shadow-2xl border border-zinc-200 dark:border-zinc-800 text-center space-y-8"
-            >
-              <div className="w-24 h-24 mx-auto drop-shadow-2xl">
-                <BubblesIcon className="w-full h-full" />
-              </div>
-              <div className="space-y-3">
-                <h3 className="text-3xl font-display font-bold dark:text-white">Success!</h3>
-                <p className="text-zinc-500 dark:text-zinc-400 leading-relaxed">
-                  Your order <span className="font-bold text-sky-600 dark:text-sky-400">#{orderId}</span> is in safe hands. We'll be there soon!
-                </p>
-              </div>
-              <button 
-                onClick={() => {
-                  hapticSuccess();
-                  setShowSuccessModal(false);
-                  setView('track');
-                  handleTrack();
-                }}
-                className="w-full bg-sky-600 text-white py-5 rounded-[24px] font-bold hover:bg-sky-700 active:scale-95 transition-all shadow-xl shadow-sky-200 dark:shadow-sky-900/30"
-              >
-                Track My Order
-              </button>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      <header className="sticky top-0 z-50 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-xl border-b border-zinc-200/50 dark:border-zinc-800/50 px-6 py-4 pt-[calc(env(safe-area-inset-top,0px)+16px)]">
+    <div className="min-h-screen font-sans">
+      {/* Header */}
+      <header className="sticky top-0 z-50 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800 px-4 py-3">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <div 
-            className="flex items-center gap-3 cursor-pointer group" 
-            onClick={() => { hapticClick(); setView('home'); setTrackingOrder(null); }}
+            className="flex items-center gap-2 cursor-pointer" 
+            onClick={() => { setView('driver'); }}
           >
-            <BubblesIcon className="w-9 h-9 drop-shadow-md group-active:scale-90 transition-transform" />
-            <div>
-              <h1 className="text-xl font-display font-bold tracking-tight text-zinc-900 dark:text-white uppercase leading-none">bubbletz</h1>
-              <p className="text-[10px] font-bold text-sky-600 dark:text-sky-400 uppercase tracking-widest mt-0.5">Laundry Service</p>
+            <div className="bg-sky-500 p-2 rounded-xl shadow-lg shadow-sky-200 dark:shadow-sky-900/20">
+              <Droplets className="text-white w-6 h-6" />
             </div>
+            <h1 className="text-2xl font-display font-bold tracking-tight text-zinc-900 dark:text-white">BUBBLES</h1>
           </div>
-          
-          <div className="flex items-center gap-2">
+          <div className="flex gap-4">
             <button 
-              onClick={() => { hapticClick(); setDarkMode(!darkMode); }}
-              className="p-2.5 rounded-2xl bg-zinc-100 dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 hover:scale-105 active:scale-90 transition-all border border-zinc-200/50 dark:border-zinc-800/50"
+              onClick={() => setDarkMode(!darkMode)}
+              className="p-2 rounded-full text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+              title="Toggle Theme"
             >
               {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
             </button>
-            {!user && (
+            {user ? (
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => { setView('driver'); fetchDriverData(); }}
+                  className={cn(
+                    "p-2 rounded-full transition-colors",
+                    view === 'driver' ? "bg-sky-100 text-sky-600 dark:bg-sky-900/30 dark:text-sky-400" : "text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                  )}
+                >
+                  <LayoutDashboard className="w-5 h-5" />
+                </button>
+                <button 
+                  onClick={handleLogout}
+                  className="p-2 rounded-full text-zinc-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400 transition-colors"
+                  title="Logout"
+                >
+                  <LogOut className="w-5 h-5" />
+                </button>
+              </div>
+            ) : (
               <button 
-                onClick={() => { hapticClick(); setView('auth'); }}
-                className="bg-sky-600 text-white px-5 py-2.5 rounded-2xl font-bold text-sm shadow-lg shadow-sky-200 dark:shadow-sky-900/20 active:scale-95 transition-all"
+                onClick={() => {
+                  setAuthMode('signup');
+                  setAuthForm({ ...authForm, role: 'driver' });
+                  setView('auth');
+                }}
+                className="flex items-center gap-2 bg-sky-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-sky-700 transition-colors shadow-md shadow-sky-100 dark:shadow-none"
               >
-                Login
+                <User className="w-4 h-4" />
+                Join as Driver
               </button>
             )}
           </div>
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto p-4 pb-32">
+      <main className="max-w-4xl mx-auto p-4 pb-24">
         <AnimatePresence mode="wait">
-          {view === 'home' && (
+          {view === 'driver' && (
             <motion.div 
-              key="home"
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              key="driver"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
               className="space-y-8"
             >
-              <section className="relative overflow-hidden rounded-3xl bg-sky-600 dark:bg-sky-700 p-8 text-white">
-                <div className="relative z-10 space-y-4">
-                  <div className="inline-flex items-center gap-2 bg-white/20 px-3 py-1 rounded-full text-sm font-medium backdrop-blur-sm">
-                    <MapPin className="w-4 h-4" />
-                    {user?.location_name || 'Dar es Salaam, Tanzania'}
+              {/* Driver Benefits / Intro for Guests */}
+              {!user && (
+                <div className="bg-sky-600 dark:bg-sky-700 rounded-3xl p-8 text-white space-y-6 shadow-xl shadow-sky-100 dark:shadow-none">
+                  <div className="space-y-2">
+                    <h2 className="text-3xl font-display font-bold">Earn with BUBBLES</h2>
+                    <p className="text-sky-100 opacity-90">Join Dar es Salaam's fastest growing laundry delivery network.</p>
                   </div>
-                  <h2 className="text-4xl font-display font-bold leading-tight">
-                    {user ? `Hello, ${user.name}!` : 'Laundry made easy,'} <br />
-                    {user ? 'Ready for a clean wash?' : 'with bubbletz at your door.'}
-                  </h2>
-                  <p className="text-sky-50 opacity-90 max-w-md">
-                    Premium washing, drying, and folding service. We pick up and deliver anywhere in Dar es Salaam.
-                  </p>
-                  <div className="flex gap-3 pt-4">
-                    <button 
-                      onClick={() => { hapticClick(); setView('order'); }}
-                      className="bg-white text-sky-600 px-6 py-3 rounded-2xl font-bold shadow-xl hover:bg-sky-50 transition-colors"
-                    >
-                      Order Pickup
-                    </button>
-                    <button 
-                      onClick={() => { hapticClick(); setView('history'); }}
-                      className="bg-sky-700 text-white px-6 py-3 rounded-2xl font-bold hover:bg-sky-800 transition-colors"
-                    >
-                      Track Order
-                    </button>
-                  </div>
-                </div>
-                <BubblesIcon className="absolute top-0 right-0 -translate-y-1/4 translate-x-1/4 w-64 h-64 opacity-20 blur-sm" />
-                <div className="absolute bottom-0 left-0 translate-y-1/4 -translate-x-1/4 w-48 h-48 bg-sky-400/20 rounded-full blur-2xl" />
-              </section>
-
-              <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm">
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-2xl">
-                      <Package className="text-blue-600 dark:text-blue-400 w-6 h-6" />
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-white/10 backdrop-blur-sm p-4 rounded-2xl">
+                      <Clock className="w-6 h-6 mb-2 text-sky-200" />
+                      <p className="font-bold text-sm">Flexible Hours</p>
+                      <p className="text-[10px] opacity-80">Work whenever you want. You are the boss.</p>
                     </div>
-                    {saturday && (
-                      <span className="bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-xs font-bold px-2 py-1 rounded-lg uppercase tracking-wider">
-                        Saturday Special
-                      </span>
-                    )}
-                  </div>
-                  <h3 className="text-xl font-bold mb-1 dark:text-white">Normal Clothes</h3>
-                  <p className="text-zinc-500 dark:text-zinc-400 text-sm mb-4">Per kilogram. Includes wash, dry, and fold.</p>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-3xl font-display font-bold dark:text-white">
-                      ${saturday ? PRICING.NORMAL.SATURDAY : PRICING.NORMAL.REGULAR}
-                    </span>
-                    <span className="text-zinc-400">/kg</span>
-                  </div>
-                </div>
-
-                <div className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm">
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="bg-indigo-50 dark:bg-indigo-900/20 p-3 rounded-2xl">
-                      <History className="text-indigo-600 dark:text-indigo-400 w-6 h-6" />
+                    <div className="bg-white/10 backdrop-blur-sm p-4 rounded-2xl">
+                      <CheckCircle2 className="w-6 h-6 mb-2 text-sky-200" />
+                      <p className="font-bold text-sm">Instant Payouts</p>
+                      <p className="text-[10px] opacity-80">Get paid for every delivery you complete.</p>
                     </div>
-                    {saturday && (
-                      <span className="bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-xs font-bold px-2 py-1 rounded-lg uppercase tracking-wider">
-                        Saturday Special
-                      </span>
-                    )}
-                  </div>
-                  <h3 className="text-xl font-bold mb-1 dark:text-white">Blankets</h3>
-                  <p className="text-zinc-500 dark:text-zinc-400 text-sm mb-4">Per item. Deep clean and sanitization.</p>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-3xl font-display font-bold dark:text-white">
-                      ${saturday ? PRICING.BLANKET.SATURDAY : PRICING.BLANKET.REGULAR}
-                    </span>
-                    <span className="text-zinc-400">/each</span>
-                  </div>
-                </div>
-              </section>
-
-              {saturday && (
-                <section className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 rounded-3xl p-6 flex items-center gap-4">
-                  <div className="bg-amber-100 dark:bg-amber-900/20 p-3 rounded-2xl">
-                    <Calendar className="text-amber-600 dark:text-amber-400 w-6 h-6" />
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-amber-900 dark:text-amber-100">Saturday Discount Day!</h4>
-                    <p className="text-amber-700 dark:text-amber-300 text-sm">Save up to 40% every Saturday. Normal clothes at $1.50/kg and blankets at $4.00.</p>
-                  </div>
-                </section>
-              )}
-            </motion.div>
-          )}
-
-          {view === 'order' && (
-            <motion.div 
-              key="order"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="space-y-6"
-            >
-              <div className="flex items-center gap-4 mb-6">
-                <button 
-                  onClick={() => { hapticClick(); setView('home'); }}
-                  className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors"
-                >
-                  <ChevronRight className="w-6 h-6 rotate-180 dark:text-zinc-400" />
-                </button>
-                <h2 className="text-2xl font-display font-bold dark:text-white">
-                  {editingOrder ? 'Edit Your Order' : 'Place Your Order'}
-                </h2>
-              </div>
-
-              <form onSubmit={handlePlaceOrder} className="space-y-6">
-                <div className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm space-y-4">
-                  <h3 className="font-bold text-lg flex items-center gap-2 dark:text-white">
-                    <Info className="w-5 h-5 text-sky-500" />
-                    Contact Information
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Full Name</label>
-                      <input 
-                        required
-                        type="text" 
-                        placeholder="John Doe"
-                        className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all"
-                        value={formData.name}
-                        onChange={e => setFormData({...formData, name: e.target.value})}
-                      />
+                    <div className="bg-white/10 backdrop-blur-sm p-4 rounded-2xl">
+                      <Navigation className="w-6 h-6 mb-2 text-sky-200" />
+                      <p className="font-bold text-sm">Smart Routing</p>
+                      <p className="text-[10px] opacity-80">Optimized routes to save your fuel and time.</p>
                     </div>
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Phone Number</label>
-                      <input 
-                        required
-                        type="tel" 
-                        placeholder="07 ....."
-                        className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all"
-                        value={formData.phone}
-                        onChange={e => setFormData({...formData, phone: e.target.value})}
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Pickup Address</label>
-                    <textarea 
-                      required
-                      placeholder="Kariakoo, Dar es Salaam..."
-                      className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all h-24 resize-none"
-                      value={formData.address}
-                      onChange={e => setFormData({...formData, address: e.target.value})}
-                    />
-                  </div>
-                </div>
-
-                <div className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm space-y-4">
-                  <h3 className="font-bold text-lg flex items-center gap-2 dark:text-white">
-                    <Package className="w-5 h-5 text-sky-500" />
-                    Order Details
-                  </h3>
-                  <div className="space-y-6">
-                    <div className="flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-950 rounded-2xl">
-                      <div>
-                        <h4 className="font-bold dark:text-white">Normal Clothes</h4>
-                        <p className="text-xs text-zinc-500 dark:text-zinc-400">Estimated weight in KG</p>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <button 
-                          type="button"
-                          onClick={() => { hapticClick(); setFormData({...formData, weight: Math.max(0, formData.weight - 0.5)}); }}
-                          className="p-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-800 dark:text-white"
-                        >
-                          <Minus className="w-4 h-4" />
-                        </button>
-                        <span className="w-12 text-center font-display font-bold text-lg dark:text-white">{formData.weight}</span>
-                        <button 
-                          type="button"
-                          onClick={() => { hapticClick(); setFormData({...formData, weight: formData.weight + 0.5}); }}
-                          className="p-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-800 dark:text-white"
-                        >
-                          <Plus className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-950 rounded-2xl">
-                      <div>
-                        <h4 className="font-bold dark:text-white">Blankets</h4>
-                        <p className="text-xs text-zinc-500 dark:text-zinc-400">Number of items</p>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <button 
-                          type="button"
-                          onClick={() => { hapticClick(); setFormData({...formData, blankets: Math.max(0, formData.blankets - 1)}); }}
-                          className="p-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-800 dark:text-white"
-                        >
-                          <Minus className="w-4 h-4" />
-                        </button>
-                        <span className="w-12 text-center font-display font-bold text-lg dark:text-white">{formData.blankets}</span>
-                        <button 
-                          type="button"
-                          onClick={() => { hapticClick(); setFormData({...formData, blankets: formData.blankets + 1}); }}
-                          className="p-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-800 dark:text-white"
-                        >
-                          <Plus className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm space-y-4">
-                  <h3 className="font-bold text-lg flex items-center gap-2 dark:text-white">
-                    <MapPin className="w-5 h-5 text-sky-500" />
-                    Pickup Location
-                  </h3>
-                  <MapPicker 
-                    initialPos={(formData.lat && formData.lng) ? [formData.lat, formData.lng] : undefined}
-                    onLocationSelect={(lat, lng, name) => setFormData({...formData, lat, lng, location_name: name || ''})} 
-                  />
-                  {formData.location_name && (
-                    <p className="text-xs text-sky-600 dark:text-sky-400 font-medium">Detected: {formData.location_name}</p>
-                  )}
-                </div>
-
-                {error && (
-                  <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/30 text-red-600 dark:text-red-400 rounded-2xl text-sm font-medium">
-                    {error}
-                  </div>
-                )}
-
-                <div className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-2xl flex items-center justify-between gap-4">
-                  <div>
-                    <p className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase">Estimated Total</p>
-                    <p className="text-3xl font-display font-bold text-sky-600 dark:text-sky-400">
-                      ${calculatePrice(formData.weight, formData.blankets).toFixed(2)}
-                    </p>
                   </div>
                   <button 
-                    disabled={loading}
-                    onClick={() => hapticClick()}
-                    className="bg-sky-600 text-white px-8 py-4 rounded-2xl font-bold hover:bg-sky-700 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-sky-200 dark:shadow-sky-900/20"
+                    onClick={() => {
+                      setAuthMode('signup');
+                      setAuthForm({ ...authForm, role: 'driver' });
+                      setView('auth');
+                    }}
+                    className="w-full bg-white text-sky-600 py-4 rounded-2xl font-bold shadow-lg hover:bg-sky-50 transition-colors flex items-center justify-center gap-2"
                   >
-                    {loading ? 'Processing...' : 'Confirm Pickup'}
+                    Start Working Now
+                    <ArrowRight className="w-5 h-5" />
                   </button>
                 </div>
-              </form>
+              )}
+
+              {/* Map Section */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-zinc-500 uppercase tracking-wider">Live Map</h3>
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-1">
+                      <div className="w-2 h-2 rounded-full bg-sky-500"></div>
+                      <span className="text-[10px] text-zinc-500 font-medium uppercase">Orders</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                      <span className="text-[10px] text-zinc-500 font-medium uppercase">Shops</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="h-[300px] rounded-3xl overflow-hidden border border-zinc-200 dark:border-zinc-800 shadow-inner">
+                  <MapPicker 
+                    onLocationSelect={() => {}} 
+                    initialPos={DAR_ES_SALAAM_BOUNDS.center}
+                    markers={[
+                      ...availableOrders.map(o => ({ id: o.id, lat: o.lat, lng: o.lng, title: o.customer_name, type: 'order' as const })),
+                      ...shops.map(s => ({ id: s.id, lat: s.lat, lng: s.lng, title: s.name, type: 'shop' as const }))
+                    ]}
+                  />
+                </div>
+              </div>
+
+              {/* Active Tasks - Only for Logged In Drivers */}
+              {user && user.role === 'driver' && (
+                <div className="space-y-4">
+                  <h3 className="text-sm font-bold text-zinc-500 uppercase tracking-wider">My Active Tasks</h3>
+                  {myDriverOrders.length === 0 ? (
+                    <div className="bg-zinc-50 dark:bg-zinc-950 p-8 rounded-3xl border border-dashed border-zinc-200 dark:border-zinc-800 text-center">
+                      <p className="text-zinc-400 text-sm">No active tasks. Accept an order below!</p>
+                    </div>
+                  ) : (
+                    <div className="grid gap-4">
+                      {myDriverOrders.map(order => (
+                        <div key={order.id} className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm space-y-4">
+                          <div className="flex justify-between items-start">
+                            <div className="space-y-1">
+                              <span className={cn(
+                                "px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider",
+                                order.status === 'Driver Assigned' ? "bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400" :
+                                order.status === 'Picked Up' ? "bg-sky-100 text-sky-600 dark:bg-sky-900/30 dark:text-sky-400" :
+                                "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
+                              )}>
+                                {order.status}
+                              </span>
+                              <p className="font-bold text-lg dark:text-white">{order.customer_name}</p>
+                              <p className="text-xs text-zinc-500">{order.address}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-sm font-bold text-sky-600">${order.total_price.toFixed(2)}</p>
+                              <p className="text-[10px] text-zinc-400">{order.id}</p>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap gap-2 pt-4 border-t border-zinc-100 dark:border-zinc-800">
+                            {order.status === 'Driver Assigned' && (
+                              <button 
+                                onClick={() => updateOrderStatus(order.id, 'Picked Up')}
+                                className="flex-1 bg-sky-600 text-white py-2 rounded-xl text-sm font-bold hover:bg-sky-700 transition-colors"
+                              >
+                                Confirm Pickup
+                              </button>
+                            )}
+                            {order.status === 'Picked Up' && (
+                              <div className="w-full space-y-2">
+                                <p className="text-xs font-bold text-zinc-500 uppercase">Deliver to Shop</p>
+                                <div className="grid grid-cols-1 gap-2">
+                                  {shops.map(shop => (
+                                    <button 
+                                      key={shop.id}
+                                      onClick={() => updateOrderStatus(order.id, 'At Shop', shop.id)}
+                                      className="flex items-center justify-between p-3 border border-zinc-200 dark:border-zinc-800 rounded-xl hover:border-sky-500 transition-colors group"
+                                    >
+                                      <div className="text-left">
+                                        <p className="text-sm font-bold dark:text-white group-hover:text-sky-600">{shop.name}</p>
+                                        <p className="text-[10px] text-zinc-500">{shop.address}</p>
+                                      </div>
+                                      <ArrowRight className="w-4 h-4 text-zinc-300 group-hover:text-sky-500" />
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            {order.status === 'At Shop' && (
+                              <div className="w-full space-y-2">
+                                <p className="text-xs font-bold text-zinc-500 uppercase italic">Shop Processing Simulation</p>
+                                <div className="grid grid-cols-3 gap-2">
+                                  <button 
+                                    onClick={() => updateOrderStatus(order.id, 'Washing')}
+                                    className="bg-zinc-100 dark:bg-zinc-800 py-2 rounded-lg text-[10px] font-bold hover:bg-sky-100 dark:hover:bg-sky-900/40 transition-colors"
+                                  >
+                                    Washing
+                                  </button>
+                                  <button 
+                                    onClick={() => updateOrderStatus(order.id, 'Drying')}
+                                    className="bg-zinc-100 dark:bg-zinc-800 py-2 rounded-lg text-[10px] font-bold hover:bg-sky-100 dark:hover:bg-sky-900/40 transition-colors"
+                                  >
+                                    Drying
+                                  </button>
+                                  <button 
+                                    onClick={() => updateOrderStatus(order.id, 'Ready for Delivery')}
+                                    className="bg-sky-100 dark:bg-sky-900/30 text-sky-600 py-2 rounded-lg text-[10px] font-bold hover:bg-sky-200 dark:hover:bg-sky-900/50 transition-colors"
+                                  >
+                                    Ready
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                            {order.status === 'Washing' && (
+                              <button 
+                                onClick={() => updateOrderStatus(order.id, 'Drying')}
+                                className="flex-1 bg-zinc-100 dark:bg-zinc-800 py-2 rounded-xl text-sm font-bold hover:bg-sky-100 dark:hover:bg-sky-900/40 transition-colors"
+                              >
+                                Move to Drying
+                              </button>
+                            )}
+                            {order.status === 'Drying' && (
+                              <button 
+                                onClick={() => updateOrderStatus(order.id, 'Ready for Delivery')}
+                                className="flex-1 bg-sky-100 dark:bg-sky-900/30 text-sky-600 py-2 rounded-xl text-sm font-bold hover:bg-sky-200 dark:hover:bg-sky-900/50 transition-colors"
+                              >
+                                Mark Ready
+                              </button>
+                            )}
+                            {order.status === 'Ready for Delivery' && (
+                              <button 
+                                onClick={() => updateOrderStatus(order.id, 'Out for Delivery')}
+                                className="flex-1 bg-sky-600 text-white py-2 rounded-xl text-sm font-bold hover:bg-sky-700 transition-colors"
+                              >
+                                Start Delivery
+                              </button>
+                            )}
+                            {order.status === 'Out for Delivery' && (
+                              <button 
+                                onClick={() => updateOrderStatus(order.id, 'Delivered')}
+                                className="flex-1 bg-green-600 text-white py-2 rounded-xl text-sm font-bold hover:bg-green-700 transition-colors"
+                              >
+                                Confirm Delivery
+                              </button>
+                            )}
+                            <a 
+                              href={`https://www.google.com/maps/dir/?api=1&destination=${order.lat},${order.lng}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-2 border border-zinc-200 dark:border-zinc-800 rounded-xl text-zinc-500 hover:text-sky-600 transition-colors"
+                            >
+                              <Navigation className="w-5 h-5" />
+                            </a>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Available Orders */}
+              <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <h3 className="text-sm font-bold text-zinc-500 uppercase tracking-wider">Available Nearby</h3>
+                  <div className="flex bg-zinc-100 dark:bg-zinc-800 p-1 rounded-xl w-full sm:w-auto">
+                    <button 
+                      onClick={() => setDriverFilter('all')}
+                      className={cn(
+                        "flex-1 sm:flex-none px-4 py-2 text-xs font-bold rounded-lg transition-all",
+                        driverFilter === 'all' ? "bg-white dark:bg-zinc-700 text-sky-600 shadow-sm" : "text-zinc-500 hover:text-zinc-700"
+                      )}
+                    >
+                      All Orders
+                    </button>
+                    <button 
+                      onClick={() => setDriverFilter('pickup')}
+                      className={cn(
+                        "flex-1 sm:flex-none px-4 py-2 text-xs font-bold rounded-lg transition-all",
+                        driverFilter === 'pickup' ? "bg-white dark:bg-zinc-700 text-sky-600 shadow-sm" : "text-zinc-500 hover:text-zinc-700"
+                      )}
+                    >
+                      Pickups
+                    </button>
+                    <button 
+                      onClick={() => setDriverFilter('delivery')}
+                      className={cn(
+                        "flex-1 sm:flex-none px-4 py-2 text-xs font-bold rounded-lg transition-all",
+                        driverFilter === 'delivery' ? "bg-white dark:bg-zinc-700 text-sky-600 shadow-sm" : "text-zinc-500 hover:text-zinc-700"
+                      )}
+                    >
+                      Deliveries
+                    </button>
+                  </div>
+                </div>
+                {availableOrders.filter(o => {
+                  if (driverFilter === 'all') return true;
+                  if (driverFilter === 'pickup') return o.status === 'Pending';
+                  if (driverFilter === 'delivery') return o.status === 'Ready for Delivery';
+                  return true;
+                }).length === 0 ? (
+                  <div className="bg-zinc-50 dark:bg-zinc-950 p-8 rounded-3xl border border-dashed border-zinc-200 dark:border-zinc-800 text-center">
+                    <p className="text-zinc-400 text-sm">No {driverFilter !== 'all' ? driverFilter : ''} orders in your area right now.</p>
+                  </div>
+                ) : (
+                  <div className="grid gap-3">
+                    {availableOrders.filter(o => {
+                      if (driverFilter === 'all') return true;
+                      if (driverFilter === 'pickup') return o.status === 'Pending';
+                      if (driverFilter === 'delivery') return o.status === 'Ready for Delivery';
+                      return true;
+                    }).map(order => (
+                      <div key={order.id} className="bg-white dark:bg-zinc-900 p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                          <div className="bg-sky-50 dark:bg-sky-900/20 p-2 rounded-xl">
+                            <Package className="text-sky-600 dark:text-sky-400 w-5 h-5" />
+                          </div>
+                          <div>
+                            <p className="font-bold text-sm dark:text-white">{order.customer_name}</p>
+                            <p className="text-[10px] text-zinc-500">{order.address}</p>
+                            <p className="text-[10px] font-bold text-sky-600 mt-1">
+                              {order.status === 'Pending' ? 'Pickup' : 'Delivery'} • ${order.total_price.toFixed(2)}
+                            </p>
+                          </div>
+                        </div>
+                        <button 
+                          onClick={() => acceptOrder(order.id)}
+                          className="bg-sky-600 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-sky-700 transition-colors shadow-md shadow-sky-100 dark:shadow-none"
+                        >
+                          Accept
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </motion.div>
           )}
 
@@ -882,553 +544,86 @@ export default function App() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="max-w-xl mx-auto"
+              className="max-w-md mx-auto"
             >
               <div className="bg-white dark:bg-zinc-900 p-8 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm space-y-6">
                 <div className="text-center space-y-2">
                   <h2 className="text-2xl font-display font-bold dark:text-white">
-                    {authMode === 'login' ? 'Welcome Back' : authMode === 'signup' ? 'Create Account' : 'Recover Password'}
+                    {authMode === 'login' ? 'Welcome Back' : 'Join the Fleet'}
                   </h2>
                   <p className="text-zinc-500 dark:text-zinc-400 text-sm">
-                    {authMode === 'login' ? 'Login to access your order history' : authMode === 'signup' ? 'Sign up to start ordering laundry service' : 'Enter your email to recover your password'}
+                    {authMode === 'login' ? 'Login to your driver account' : 'Sign up to start earning with BUBBLES'}
                   </p>
                 </div>
 
                 <form onSubmit={handleAuth} className="space-y-4">
-                  <div className={`grid grid-cols-1 ${authMode === 'signup' ? 'md:grid-cols-2' : ''} gap-4`}>
-                    {authMode === 'signup' && (
-                      <>
-                        <div className="space-y-1">
-                          <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Full Name</label>
-                          <input 
-                            required
-                            type="text" 
-                            placeholder="John Doe"
-                            className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all"
-                            value={authForm.name}
-                            onChange={e => setAuthForm({...authForm, name: e.target.value})}
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Username</label>
-                          <input 
-                            required
-                            type="text" 
-                            placeholder="johndoe123"
-                            className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all"
-                            value={authForm.username}
-                            onChange={e => setAuthForm({...authForm, username: e.target.value})}
-                          />
-                        </div>
-                      </>
-                    )}
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Email Address</label>
-                      <input 
-                        required
-                        type="email" 
-                        placeholder="john@example.com"
-                        className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all"
-                        value={authForm.email}
-                        onChange={e => setAuthForm({...authForm, email: e.target.value})}
-                      />
-                    </div>
-                    {authMode !== 'recover' && (
-                      <div className="space-y-1">
-                        <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Password</label>
-                        <input 
-                          required
-                          type="password" 
-                          placeholder="••••••••"
-                          className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all"
-                          value={authForm.password}
-                          onChange={e => setAuthForm({...authForm, password: e.target.value})}
-                        />
-                      </div>
-                    )}
-                    {authMode === 'signup' && (
-                      <>
-                        <div className="space-y-1">
-                          <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Phone Number</label>
-                          <input 
-                            required
-                            type="tel" 
-                            placeholder="Phone number..."
-                            className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all"
-                            value={authForm.phone}
-                            onChange={e => setAuthForm({...authForm, phone: e.target.value})}
-                          />
-                        </div>
-                        <div className="flex items-center gap-3 px-4 py-3 mt-5 bg-zinc-50 dark:bg-zinc-950 rounded-2xl border border-zinc-200 dark:border-zinc-800">
-                          <input 
-                            type="checkbox" 
-                            id="whatsapp"
-                            className="w-5 h-5 rounded border-zinc-300 text-sky-600 focus:ring-sky-500"
-                            checked={authForm.is_whatsapp}
-                            onChange={e => setAuthForm({...authForm, is_whatsapp: e.target.checked})}
-                          />
-                          <label htmlFor="whatsapp" className="text-sm font-medium text-zinc-700 dark:text-zinc-300 cursor-pointer">
-                            I'm available on WhatsApp
-                          </label>
-                        </div>
-                      </>
-                    )}
-                  </div>
-
                   {authMode === 'signup' && (
-                    <div className="space-y-4 pt-4 border-t border-zinc-100 dark:border-zinc-800">
-                      <div className="space-y-1">
-                        <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Default Pickup Address</label>
-                        <textarea 
-                          required
-                          placeholder="Your street address, suburb, etc."
-                          className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all h-20 resize-none"
-                          value={authForm.address}
-                          onChange={e => setAuthForm({...authForm, address: e.target.value})}
-                        />
-                      </div>
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-2 text-sky-600 dark:text-sky-400">
-                          <MapPin className="w-4 h-4" />
-                          <label className="text-sm font-bold uppercase tracking-wider">Pin Your Location (Required)</label>
-                        </div>
-                        <div className="rounded-2xl overflow-hidden border-2 border-sky-100 dark:border-sky-900/30 shadow-inner">
-                          <MapPicker 
-                            onLocationSelect={(lat, lng, name) => setAuthForm({...authForm, lat, lng, location_name: name || ''})} 
-                          />
-                        </div>
-                        {authForm.location_name && (
-                          <p className="text-xs text-zinc-500 dark:text-zinc-400 italic bg-zinc-50 dark:bg-zinc-950 p-2 rounded-lg">
-                            Selected: {authForm.location_name}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {error && <p className="text-red-500 text-xs font-medium bg-red-50 dark:bg-red-900/10 p-3 rounded-xl border border-red-100 dark:border-red-900/20">{error}</p>}
-                  
-                  {recoveryPassword && (
-                    <div className="bg-emerald-50 dark:bg-emerald-900/10 p-4 rounded-2xl border border-emerald-100 dark:border-emerald-900/20 space-y-2">
-                      <p className="text-emerald-800 dark:text-emerald-300 text-sm font-medium">Password found!</p>
-                      <p className="text-2xl font-mono font-bold text-emerald-600 dark:text-emerald-400 tracking-wider">{recoveryPassword}</p>
-                      <button 
-                        type="button"
-                        onClick={() => { setAuthMode('login'); setRecoveryPassword(''); }}
-                        className="text-xs text-emerald-700 dark:text-emerald-400 underline"
-                      >
-                        Back to Login
-                      </button>
-                    </div>
-                  )}
-
-                  <button 
-                    disabled={loading}
-                    type="submit"
-                    onClick={() => hapticClick()}
-                    className="w-full bg-sky-600 text-white py-4 rounded-2xl font-bold hover:bg-sky-700 active:scale-95 transition-all disabled:opacity-50 shadow-lg shadow-sky-200 dark:shadow-sky-900/20"
-                  >
-                    {loading ? 'Processing...' : authMode === 'login' ? 'Login' : authMode === 'signup' ? 'Sign Up' : 'Recover Password'}
-                  </button>
-                </form>
-
-                <div className="flex flex-col gap-3 text-center">
-                  <button 
-                    onClick={() => { hapticClick(); setAuthMode(authMode === 'login' ? 'signup' : 'login'); setError(''); setRecoveryPassword(''); }}
-                    className="text-sm text-zinc-500 dark:text-zinc-400 hover:text-sky-600 dark:hover:text-sky-400 transition-colors font-medium"
-                  >
-                    {authMode === 'login' ? "Don't have an account? Sign Up" : "Already have an account? Login"}
-                  </button>
-                  
-                  {authMode === 'login' && (
-                    <button 
-                      onClick={() => { hapticClick(); setAuthMode('recover'); setError(''); }}
-                      className="text-xs text-zinc-400 dark:text-zinc-500 hover:text-sky-600 dark:hover:text-sky-400 transition-colors"
-                    >
-                      Forgot your password?
-                    </button>
-                  )}
-                  
-                  {authMode === 'recover' && (
-                    <button 
-                      onClick={() => { hapticClick(); setAuthMode('login'); setError(''); setRecoveryPassword(''); }}
-                      className="text-xs text-zinc-400 dark:text-zinc-500 hover:text-sky-600 dark:hover:text-sky-400 transition-colors"
-                    >
-                      Back to Login
-                    </button>
-                  )}
-                </div>
-              </div>
-            </motion.div>
-          )}
-
-          {view === 'settings' && (
-            <motion.div 
-              key="settings"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="max-w-xl mx-auto"
-            >
-              <div className="flex items-center gap-4 mb-6">
-                <button 
-                  onClick={() => { hapticClick(); setView('home'); }}
-                  className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors"
-                >
-                  <ChevronRight className="w-6 h-6 rotate-180 dark:text-zinc-400" />
-                </button>
-                <h2 className="text-2xl font-display font-bold dark:text-white">Profile Settings</h2>
-              </div>
-
-              <div className="bg-white dark:bg-zinc-900 p-8 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm space-y-6">
-                <div className="flex items-center gap-4 p-4 bg-sky-50 dark:bg-sky-900/20 rounded-2xl border border-sky-100 dark:border-sky-900/30">
-                  <div className="bg-sky-500 p-3 rounded-full text-white">
-                    <User className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold dark:text-white">{user?.name}</h3>
-                    <p className="text-xs text-sky-600 dark:text-sky-400 font-mono">ID: {user?.id}</p>
-                  </div>
-                </div>
-
-                <form onSubmit={handleUpdateProfile} className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Full Name</label>
                       <input 
                         required
                         type="text" 
-                        className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none"
+                        placeholder="John Doe"
+                        className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all"
                         value={authForm.name}
                         onChange={e => setAuthForm({...authForm, name: e.target.value})}
                       />
                     </div>
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Username</label>
-                      <input 
-                        required
-                        type="text" 
-                        className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none"
-                        value={authForm.username}
-                        onChange={e => setAuthForm({...authForm, username: e.target.value})}
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Email</label>
-                      <input 
-                        required
-                        type="email" 
-                        className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none"
-                        value={authForm.email}
-                        onChange={e => setAuthForm({...authForm, email: e.target.value})}
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Phone</label>
-                      <input 
-                        required
-                        type="tel" 
-                        className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none"
-                        value={authForm.phone}
-                        onChange={e => setAuthForm({...authForm, phone: e.target.value})}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3 px-4 py-3 bg-zinc-50 dark:bg-zinc-950 rounded-2xl border border-zinc-200 dark:border-zinc-800">
-                    <input 
-                      type="checkbox" 
-                      id="settings_whatsapp"
-                      className="w-5 h-5 rounded border-zinc-300 text-sky-600 focus:ring-sky-500"
-                      checked={authForm.is_whatsapp}
-                      onChange={e => setAuthForm({...authForm, is_whatsapp: e.target.checked})}
-                    />
-                    <label htmlFor="settings_whatsapp" className="text-sm font-medium text-zinc-700 dark:text-zinc-300 cursor-pointer">
-                      I'm available on WhatsApp
-                    </label>
-                  </div>
-
+                  )}
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Default Pickup Address</label>
-                    <textarea 
+                    <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Email Address</label>
+                    <input 
                       required
-                      className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none h-20 resize-none"
-                      value={authForm.address}
-                      onChange={e => setAuthForm({...authForm, address: e.target.value})}
+                      type="email" 
+                      placeholder="driver@example.com"
+                      className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all"
+                      value={authForm.email}
+                      onChange={e => setAuthForm({...authForm, email: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Password</label>
+                    <input 
+                      required
+                      type="password" 
+                      placeholder="••••••••"
+                      className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all"
+                      value={authForm.password}
+                      onChange={e => setAuthForm({...authForm, password: e.target.value})}
                     />
                   </div>
 
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Update Your Saved Location</label>
-                    <MapPicker 
-                      initialPos={(user?.lat && user?.lng) ? [user.lat, user.lng] : undefined}
-                      onLocationSelect={(lat, lng, name) => setAuthForm({...authForm, lat, lng, location_name: name || ''})} 
-                    />
-                  </div>
+                  {error && <p className="text-red-500 text-xs font-medium">{error}</p>}
 
                   <button 
-                    onClick={() => hapticClick()}
-                    className="w-full bg-sky-600 text-white py-4 rounded-2xl font-bold hover:bg-sky-700 active:scale-95 transition-all shadow-lg shadow-sky-200 dark:shadow-sky-900/20"
+                    disabled={loading}
+                    className="w-full bg-sky-600 text-white py-4 rounded-2xl font-bold hover:bg-sky-700 transition-all disabled:opacity-50 shadow-lg shadow-sky-200 dark:shadow-sky-900/20"
                   >
-                    Save Changes
-                  </button>
-
-                  <button 
-                    type="button"
-                    onClick={() => { hapticClick(); handleLogout(); }}
-                    className="w-full mt-4 flex items-center justify-center gap-2 py-4 border border-red-200 dark:border-red-900/30 text-red-600 dark:text-red-400 rounded-2xl font-bold hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                  >
-                    <LogOut className="w-5 h-5" />
-                    Logout
+                    {loading ? 'Processing...' : authMode === 'login' ? 'Login' : 'Sign Up'}
                   </button>
                 </form>
-              </div>
-            </motion.div>
-          )}
 
-          {view === 'history' && (
-            <motion.div 
-              key="history"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="space-y-6"
-            >
-              <div className="flex items-center gap-4 mb-6">
-                <button 
-                  onClick={() => { hapticClick(); setView('home'); }}
-                  className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors"
-                >
-                  <ChevronRight className="w-6 h-6 rotate-180 dark:text-zinc-400" />
-                </button>
-                <h2 className="text-2xl font-display font-bold dark:text-white">Order History</h2>
-              </div>
-
-              {orderHistory.length === 0 ? (
-                <div className="bg-white dark:bg-zinc-900 p-12 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm text-center space-y-4">
-                  <div className="bg-zinc-50 dark:bg-zinc-950 w-16 h-16 rounded-full flex items-center justify-center mx-auto">
-                    <History className="text-zinc-300 dark:text-zinc-700 w-8 h-8" />
-                  </div>
-                  <p className="text-zinc-500 dark:text-zinc-400">No recent orders found.</p>
+                <div className="text-center">
                   <button 
-                    onClick={() => { hapticClick(); setView('order'); }}
-                    className="text-sky-600 dark:text-sky-400 font-bold hover:underline"
+                    onClick={() => setAuthMode(authMode === 'login' ? 'signup' : 'login')}
+                    className="text-sm text-zinc-500 dark:text-zinc-400 hover:text-sky-600 dark:hover:text-sky-400 transition-colors"
                   >
-                    Place your first order
+                    {authMode === 'login' ? "Don't have an account? Sign Up" : "Already have an account? Login"}
                   </button>
                 </div>
-              ) : (
-                <div className="space-y-3">
-                  {orderHistory.map(order => (
-                    <button
-                      key={order.id}
-                      onClick={() => {
-                        hapticClick();
-                        setOrderId(order.id);
-                        setView('track');
-                        handleTrack();
-                      }}
-                      className="w-full bg-white dark:bg-zinc-900 p-4 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-sm flex items-center justify-between hover:border-sky-500 active:scale-[0.98] transition-all group"
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className="bg-sky-50 dark:bg-sky-900/20 p-2 rounded-xl group-hover:bg-sky-100 dark:group-hover:bg-sky-900/40 transition-colors">
-                          <Package className="text-sky-600 dark:text-sky-400 w-5 h-5" />
-                        </div>
-                        <div className="text-left">
-                          <p className="font-bold text-zinc-900 dark:text-white">{order.id}</p>
-                          <div className="flex items-center gap-2">
-                            <span className={cn(
-                              "text-[10px] font-bold px-1.5 py-0.5 rounded-md uppercase",
-                              order.status === 'Cancelled' ? "bg-red-50 dark:bg-red-900/20 text-red-500 dark:text-red-400" : "bg-sky-50 dark:bg-sky-900/20 text-sky-600 dark:text-sky-400"
-                            )}>
-                              {order.status}
-                            </span>
-                            <p className="text-xs text-zinc-500 dark:text-zinc-400">{new Date(order.created_at).toLocaleDateString()}</p>
-                          </div>
-                        </div>
-                      </div>
-                      <ChevronRight className="w-5 h-5 text-zinc-300 dark:text-zinc-700 group-hover:text-sky-500 transition-colors" />
-                    </button>
-                  ))}
-                </div>
-              )}
-            </motion.div>
-          )}
-
-          {view === 'track' && (
-            <motion.div 
-              key="track"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="space-y-6"
-            >
-              <div className="flex items-center gap-4 mb-6">
-                <button 
-                  onClick={() => { hapticClick(); setView('home'); setTrackingOrder(null); }}
-                  className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors"
-                >
-                  <ChevronRight className="w-6 h-6 rotate-180 dark:text-zinc-400" />
-                </button>
-                <h2 className="text-2xl font-display font-bold dark:text-white">Track Order</h2>
               </div>
-
-              {!trackingOrder ? (
-                <div className="bg-white dark:bg-zinc-900 p-8 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm text-center space-y-6">
-                  <div className="bg-zinc-50 dark:bg-zinc-950 w-20 h-20 rounded-full flex items-center justify-center mx-auto">
-                    <History className="text-zinc-400 dark:text-zinc-600 w-10 h-10" />
-                  </div>
-                  <div className="space-y-2">
-                    <h3 className="text-xl font-bold dark:text-white">Track your orders</h3>
-                    <p className="text-zinc-500 dark:text-zinc-400 text-sm">Select an order from your history to see its current status.</p>
-                  </div>
-                  <button 
-                    onClick={() => { hapticClick(); setView('history'); }}
-                    className="bg-sky-600 text-white px-8 py-3 rounded-2xl font-bold hover:bg-sky-700 transition-colors mx-auto"
-                  >
-                    View Order History
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-6">
-                  <div className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm space-y-4">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <p className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase">Order ID</p>
-                        <h3 className="text-xl font-display font-bold dark:text-white">{trackingOrder.id}</h3>
-                      </div>
-                      <div className={cn(
-                        "px-3 py-1 rounded-full text-sm font-bold",
-                        trackingOrder.status === 'Cancelled' ? "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400" : "bg-sky-50 dark:bg-sky-900/20 text-sky-600 dark:text-sky-400"
-                      )}>
-                        {trackingOrder.status}
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4 pt-4 border-t border-zinc-100 dark:border-zinc-800">
-                      <div>
-                        <p className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase">Items</p>
-                        <p className="text-sm font-medium dark:text-zinc-200">
-                          {trackingOrder.clothes_weight}kg Clothes, {trackingOrder.blankets_count} Blankets
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase">Total Paid</p>
-                        <p className="text-sm font-bold text-sky-600 dark:text-sky-400">${trackingOrder.total_price.toFixed(2)}</p>
-                      </div>
-                    </div>
-                    {trackingOrder.status === 'Pending' && (
-                      <div className="flex flex-col gap-2 mt-4">
-                        <button 
-                          onClick={() => { 
-                            hapticClick(); 
-                            setEditingOrder(trackingOrder);
-                            setFormData({
-                              name: trackingOrder.customer_name,
-                              phone: trackingOrder.phone,
-                              address: trackingOrder.address,
-                              weight: trackingOrder.clothes_weight,
-                              blankets: trackingOrder.blankets_count,
-                              lat: trackingOrder.lat,
-                              lng: trackingOrder.lng,
-                              location_name: trackingOrder.address // Using address as location name if separate field not in Order
-                            });
-                            setView('order');
-                          }}
-                          className="w-full flex items-center justify-center gap-2 py-3 bg-sky-50 dark:bg-sky-900/20 text-sky-600 dark:text-sky-400 rounded-2xl font-bold hover:bg-sky-100 dark:hover:bg-sky-900/40 transition-colors"
-                        >
-                          <Edit className="w-4 h-4" />
-                          Edit Order
-                        </button>
-                        <button 
-                          onClick={() => { hapticClick(); handleCancelOrder(trackingOrder.id); }}
-                          className="w-full flex items-center justify-center gap-2 py-3 border border-red-200 dark:border-red-900/30 text-red-600 dark:text-red-400 rounded-2xl font-bold hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                        >
-                          <XCircle className="w-4 h-4" />
-                          Cancel Order
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  {trackingOrder.status !== 'Cancelled' ? (
-                    <div className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm">
-                      <h3 className="font-bold mb-8 dark:text-white">Order Status</h3>
-                      <div className="space-y-8 relative">
-                        <div className="absolute left-4 top-2 bottom-2 w-0.5 bg-zinc-100 dark:bg-zinc-800" />
-                        
-                        {statusSteps.map((step, idx) => {
-                          const isCompleted = getStatusIndex(trackingOrder.status) >= idx;
-                          const isCurrent = trackingOrder.status === step;
-                          
-                          return (
-                            <div key={step} className="flex items-center gap-6 relative z-10">
-                              <div className={cn(
-                                "w-8 h-8 rounded-full flex items-center justify-center border-2 transition-all duration-500",
-                                isCompleted ? "bg-sky-500 border-sky-500 text-white" : "bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-300 dark:text-zinc-700",
-                                isCurrent && "ring-4 ring-sky-100 dark:ring-sky-900/30"
-                              )}>
-                                {isCompleted ? <CheckCircle2 className="w-5 h-5" /> : <div className="w-2 h-2 rounded-full bg-current" />}
-                              </div>
-                              <div>
-                                <p className={cn(
-                                  "font-bold transition-colors",
-                                  isCompleted ? "text-zinc-900 dark:text-white" : "text-zinc-400 dark:text-zinc-600"
-                                )}>
-                                  {step}
-                                </p>
-                                {isCurrent && (
-                                  <p className="text-xs text-sky-600 dark:text-sky-400 font-medium">Your order is currently here</p>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="bg-white dark:bg-zinc-900 p-12 rounded-3xl border border-red-100 dark:border-red-900/30 shadow-sm text-center space-y-4">
-                      <div className="bg-red-50 dark:bg-red-900/20 w-16 h-16 rounded-full flex items-center justify-center mx-auto">
-                        <XCircle className="text-red-400 w-8 h-8" />
-                      </div>
-                      <h3 className="text-xl font-bold text-zinc-900 dark:text-white">Order Cancelled</h3>
-                      <p className="text-zinc-500 dark:text-zinc-400 text-sm">This order has been cancelled and will not be processed.</p>
-                    </div>
-                  )}
-
-                  <button 
-                    onClick={() => { setTrackingOrder(null); setView('history'); }}
-                    className="w-full py-4 text-zinc-500 dark:text-zinc-400 font-bold hover:text-zinc-900 dark:hover:white transition-colors"
-                  >
-                    Track another order
-                  </button>
-                </div>
-              )}
             </motion.div>
           )}
         </AnimatePresence>
       </main>
 
-      {user && (
-        <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-xl border-t border-zinc-200/50 dark:border-zinc-800/50 px-6 pt-3 pb-[calc(env(safe-area-inset-bottom,0px)+12px)]">
-          <div className="max-w-4xl mx-auto flex justify-between items-center">
-            <NavButton target="home" icon={Circle} label="Home" />
-            <NavButton target="order" icon={Plus} label="New" />
-            <NavButton target="history" icon={History} label="Orders" />
-            <NavButton target="settings" icon={Settings} label="Profile" />
-          </div>
-        </nav>
-      )}
-
-      <footer className="bg-zinc-900 dark:bg-black text-white p-8 pb-32 transition-colors">
+      {/* Footer / Contact */}
+      <footer className="bg-zinc-900 dark:bg-black text-white p-8 pb-12 transition-colors">
         <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8">
           <div className="space-y-4">
             <div className="flex items-center gap-2">
-              <BubblesIcon className="w-8 h-8" />
-              <h2 className="text-xl font-display font-bold uppercase tracking-widest">bubbletz</h2>
+              <Droplets className="text-sky-400 w-6 h-6" />
+              <h2 className="text-xl font-display font-bold">BUBBLES</h2>
             </div>
             <p className="text-zinc-400 text-sm max-w-xs">
               Dar es Salaam's most reliable laundry service. We take care of your clothes so you can take care of your life.
@@ -1437,19 +632,19 @@ export default function App() {
           <div className="space-y-4">
             <h3 className="font-bold text-sm uppercase tracking-wider text-zinc-500">Contact Us</h3>
             <div className="space-y-2">
-              <a href="mailto:bubblestzlaundry@gmail.com" className="flex items-center gap-2 text-zinc-300 hover:text-sky-400 transition-colors">
-                <Mail className="w-4 h-4" />
-                bubblestzlaundry@gmail.com
+              <a href="tel:+255700000000" className="flex items-center gap-2 text-zinc-300 hover:text-sky-400 transition-colors">
+                <Phone className="w-4 h-4" />
+                +255 700 000 000
               </a>
               <div className="flex items-center gap-2 text-zinc-300">
                 <MapPin className="w-4 h-4" />
-                Dar es Salaam, Tanzania
+                Kariakoo, Dar es Salaam, Tanzania
               </div>
             </div>
           </div>
         </div>
         <div className="max-w-4xl mx-auto mt-12 pt-8 border-t border-white/10 text-center text-zinc-500 text-xs">
-          © {new Date().getFullYear()} REBI group. All rights reserved.
+          © {new Date().getFullYear()} BUBBLES Laundry Service. All rights reserved.
         </div>
       </footer>
     </div>
