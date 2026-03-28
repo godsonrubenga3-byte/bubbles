@@ -1,0 +1,17 @@
+{
+  "stage": 2,
+  "name": "Signup Form Enhancement",
+  "description": "Updated the signup UI with additional fields and integrated the map picker.",
+  "changes": [
+    {
+      "component": "App.tsx",
+      "action": "New Signup Fields",
+      "details": "Added inputs for Full Name, Username, Phone Number, and WhatsApp availability toggle."
+    },
+    {
+      "component": "App.tsx",
+      "action": "Map Picker Integration",
+      "details": "Integrated MapPicker into the signup form to allow users to set their default pickup location during registration."
+    }
+  ]
+}

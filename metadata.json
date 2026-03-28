@@ -1,5 +1,5 @@
 {
-  "name": "BUBBLES Laundry",
+  "name": "bubbletz Laundry",
   "description": "Premium laundry service in Dar es Salaam, Tanzania. Order pickups, track your laundry status, and enjoy special Saturday discounts.",
   "requestFramePermissions": ["geolocation"]
 }
