@@ -1,5 +1,6 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { Capacitor } from '@capacitor/core';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -24,6 +25,14 @@ export const TANZANIA_BOUNDS = {
 export function isPromotionDay() {
   const day = new Date().getDay();
   return day === 6 || day === 0; // Saturday (6) or Sunday (0)
+}
+
+const defaultApiUrl = Capacitor.isNativePlatform() ? 'https://bubblestz.vercel.app' : 'http://localhost:3000';
+export const API_BASE_URL = import.meta.env.VITE_API_URL || defaultApiUrl;
+
+export function getApiUrl(path: string) {
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  return `${API_BASE_URL}${cleanPath}`;
 }
 
 export function calculatePrice(weight: number, blankets: number) {
