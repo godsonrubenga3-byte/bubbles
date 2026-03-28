@@ -7,12 +7,12 @@ export function cn(...inputs: ClassValue[]) {
 
 export const PRICING = {
   NORMAL: {
-    REGULAR: 2.5,
-    SATURDAY: 1.5
+    REGULAR: 10000,
+    SATURDAY: 7500,
   },
   BLANKET: {
-    REGULAR: 5.0,
-    SATURDAY: 4.0
+    REGULAR: 15000,
+    SATURDAY: 11250,
   }
 };
 
@@ -21,14 +21,30 @@ export const TANZANIA_BOUNDS = {
   zoom: 12
 };
 
-export function isSaturday() {
-  return new Date().getDay() === 6;
+export function isPromotionDay() {
+  const day = new Date().getDay();
+  return day === 6 || day === 0; // Saturday (6) or Sunday (0)
 }
 
 export function calculatePrice(weight: number, blankets: number) {
-  const saturday = isSaturday();
-  const clothesRate = saturday ? PRICING.NORMAL.SATURDAY : PRICING.NORMAL.REGULAR;
-  const blanketRate = saturday ? PRICING.BLANKET.SATURDAY : PRICING.BLANKET.REGULAR;
+  const isPromo = isPromotionDay();
   
-  return (weight * clothesRate) + (blankets * blanketRate);
+  // Weights: 
+  // Normal clothes: 9,999 TSh
+  // Blankets: 1,499 TSh
+  // Weekend discount (Sat/Sun): 25% (0.75 multiplier applied to rates in PRICING)
+  // Weight-based discount: 2% for each 10kg (0.98 multiplier per 10kg)
+  
+  const clothesRate = isPromo ? PRICING.NORMAL.SATURDAY : PRICING.NORMAL.REGULAR;
+  const blanketRate = isPromo ? PRICING.BLANKET.SATURDAY : PRICING.BLANKET.REGULAR;
+  
+  const basePrice = (weight * clothesRate) + (blankets * blanketRate);
+  
+  // Additional weight discount: 2% for each 10kg
+  const weightDiscountMultiplier = 1 - (Math.floor(weight / 10) * 0.02);
+  
+  const finalPrice = basePrice * weightDiscountMultiplier;
+  
+  return Math.round(finalPrice);
 }
+

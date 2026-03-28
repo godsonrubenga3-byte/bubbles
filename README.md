@@ -1,204 +1,85 @@
 <div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+  <img width="1200" height="475" alt="BUBBLES Laundry Banner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+
+  # ✨ BUBBLES LAUNDRY ✨
+  ### *Premium Laundry Service at Your Fingertips*
+  
+  [![Premium Service](https://img.shields.io/badge/Service-Premium-blue.svg)]()
+  [![Dar es Salaam](https://img.shields.io/badge/Location-Dar_es_Salaam-green.svg)]()
+  [![Weekend Discount](https://img.shields.io/badge/Weekend_Special-25%25_OFF-orange.svg)]()
+
+  ---
+
+  ## 🧼 Tired of Doing Laundry? Let Us Handle It!
+  **BUBBLES** is the most convenient laundry pickup and delivery service in **Dar es Salaam**. We take the stress out of your week so you can focus on what matters most.
+
+  [**Order Your Pickup Now!**](http://localhost:3000)
+
 </div>
 
-# BUBBLES Laundry
+---
 
-> Premium laundry service in dar es saam. Order pickups, track your laundry status, and enjoy special Saturday discounts.
+## 🌟 Why Choose BUBBLES?
 
-BUBBLES is a full-stack web application that provides on-demand laundry pickup and delivery services in dar es saam. The app features interactive map-based location selection, real-time order tracking, and user authentication.
+*   🚀 **Fast & Reliable**: From your door to our machines and back in no time!
+*   📍 **Precision Pickup**: Use our **interactive map** to pin your exact location. No more confusing directions.
+*   📦 **Total Care**: We wash, dry, and fold with premium detergents for that "brand new" feel.
+*   📊 **Real-Time Tracking**: Watch your laundry move from "Picked Up" to "Washing" and "Delivered" in real-time.
+*   🌙 **Modern Experience**: Beautiful, easy-to-use interface with full **Dark Mode** support.
 
-## ✨ Features
+---
 
-| Feature | Description |
-|---------|-------------|
-| 📦 **Order Pickups** | Place laundry pickup orders with just a few taps |
-| 📍 **Map Selection** | Interactive map (Leaflet) to pin your exact pickup location |
-| 🌍 **Geolocation** | Auto-detect your address using browser geolocation API |
-| 🗓️ **Saturday Discounts** | Special pricing every Saturday (up to 40% off) |
-| 📊 **Order Tracking** | Real-time status updates from Pending to Delivered |
-| 👤 **User Accounts** | Secure signup/login to view order history |
-| 🌙 **Dark Mode** | Beautiful dark mode support |
+## 💰 Unbeatable Pricing & Offers
 
-## 💰 Pricing
+We believe in premium quality at fair prices. Check out our rates and **massive discounts**:
 
-| Item | Regular Price | Saturday Price |
-|------|---------------|----------------|
-| Normal clothes (per kg) | $2.50 | $1.50 |
-| Blankets (each) | $5.00 | $4.00 |
+| Service | Regular Price | Weekend Special (Sat & Sun) |
+| :--- | :--- | :--- |
+| **Normal Clothes (per kg)** | TSh 9999 | **TSh 7499** 🔥 |
+| **Blankets (per item)** | TSh 1499 | **TSh 1124** 🔥 |
 
-## 🛠️ Tech Stack
+### 🎊 Huge Savings
+- **Weekend Special:** Get a flat **25% OFF** every Saturday and Sunday!
+- **Bulk Discount:** Doing a big clean? Get an additional **2% OFF for every 10kg** of clothes! (e.g., 20kg = 4% off, 30kg = 6% off).
 
-### Frontend
-- **React 19** - Modern UI library with hooks
-- **TypeScript** - Type-safe JavaScript
-- **Tailwind CSS v4** - Utility-first CSS framework
-- **Framer Motion** - Smooth animations
-- **React Leaflet** - Interactive maps
-- **Lucide React** - Icon library
+---
 
-### Backend
-- **Express.js** - Node.js web framework
-- **@libsql/client** - Turso (libSQL) database client
-- **Vite** - Next-generation build tool
+## 🛠️ How It Works (3 Easy Steps)
 
-### Services
-- **Leaflet / OpenStreetMap** - Map services
+1.  **Pin Your Location**: Use our smart map to show us where to pick up.
+2.  **Estimate Your Load**: Tell us how many kg of clothes or blankets you have.
+3.  **Relax**: We'll handle the rest and notify you at every step of the way!
 
-## 📋 Prerequisites
+---
 
-Before running the application, ensure you have:
+## 📁 For Developers (Tech Stack)
 
-- **Node.js** (v18 or higher) - [Download](https://nodejs.org/)
-- **npm** (comes with Node.js)
-- **Git** - [Download](https://git-scm.com/)
+While we focus on clean clothes, we also love clean code:
+- **Frontend**: React 19, TypeScript, Tailwind CSS v4, Framer Motion, Leaflet Maps.
+- **Backend**: Express.js, Turso (libSQL) Database, Socket.io for live updates.
 
-## 🚀 Getting Started
+---
 
-### 1. Clone the Repository
+## 🏗️ Getting Started
 
 ```bash
+# Clone & Install
 git clone <repository-url>
-cd bubbles
-```
-
-### 2. Install Dependencies
-
-```bash
 npm install
-```
 
-### 3. Environment Setup
+# Setup Environment
+# Create .env with GEMINI_API_KEY, TURSO_URL, and TURSO_AUTH_TOKEN
 
-Create a `.env` file in the project root with your Gemini API key and Turso credentials:
-
-```env
-GEMINI_API_KEY=your_gemini_api_key_here
-TURSO_URL=libsql://your-db-name-org.turso.io
-TURSO_AUTH_TOKEN=your_turso_auth_token_here
-```
-
-> **Note:** Get your Gemini API key from [Google AI Studio](https://aistudio.google.com/app/apikey) and your Turso credentials from the [Turso Dashboard](https://turso.tech/).
-
-
-### 4. Run the Application
-
-```bash
+# Run the Magic
 npm run dev
 ```
-
-The application will start at **http://localhost:3000**
-
-## 📁 Project Structure
-
-```
-bubbles/
-├── src/
-│   ├── components/
-│   │   └── MapPicker.tsx      # Interactive map component
-│   ├── App.tsx                # Main React application
-│   ├── constants.ts           # Pricing and configuration
-│   ├── cn.ts                  # Tailwind class merger utility
-│   ├── index.css              # Global styles
-│   └── main.tsx               # Application entry point
-├── server.ts                  # Express backend server
-├── index.html                 # HTML template
-├── package.json               # Dependencies
-├── tsconfig.json              # TypeScript config
-├── vite.config.ts             # Vite configuration
-└── README.md                  # This file
-```
-
-## 🔌 API Endpoints
-
-### Authentication
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/signup` | Create new user account |
-| POST | `/api/login` | Authenticate user |
-
-### Orders
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/orders/:id` | Get order by ID |
-| GET | `/api/orders/user/:userId` | Get user's order history |
-| POST | `/api/orders` | Create new order |
-| POST | `/api/orders/:id/cancel` | Cancel pending order |
-
-## 🎨 Customization
-
-### Modifying Prices
-
-Edit the pricing in `src/constants.ts`:
-
-```typescript
-export const PRICING = {
-  NORMAL: {
-    REGULAR: 2.5,    // Regular price per kg
-    SATURDAY: 1.5   // Saturday price per kg
-  },
-  BLANKET: {
-    REGULAR: 5.0,   // Regular price per blanket
-    SATURDAY: 4.0   // Saturday price per blanket
-  }
-};
-```
-
-### Map Location
-
-Change the default map center in `src/constants.ts`:
-
-```typescript
-export const TANZANIA_BOUNDS = {
-  center: [-6.7924, 39.2083] as [number, number],
-  zoom: 12
-};
-```
-
-## 📱 Available Scripts
-
-| Script | Description |
-|--------|-------------|
-| `npm run dev` | Start development server |
-| `npm run build` | Build for production |
-| `npm run preview` | Preview production build |
-| `npm run clean` | Remove build artifacts |
-| `npm run lint` | Type-check the code |
-
-## 🏗️ Building for Production
-
-```bash
-# Build the frontend
-npm run build
-
-# Preview the production build
-npm run preview
-```
-
-The production files will be in the `dist/` directory.
-
-
-
-## 📄 Copyright
-
-Copyright © 2024 REBI group  
-dar es saam  
-Contact: bubblestzlaundry@gmail.com
-
-## 📄 License
-
-This project is private and proprietary. All rights reserved.
-
-## 🙏 Acknowledgments
-
-- [Leaflet](https://leafletjs.com/) - Open-source maps
-- [Google Gemini](https://gemini.google.com/) - AI capabilities
-- [Tailwind CSS](https://tailwindcss.com/) - Styling
-- [Lucide](https://lucide.dev/) - Beautiful icons
 
 ---
 
 <div align="center">
-  Made with ❤️ in dar es saam
+  <h3>📍 Dar es Salaam, Tanzania</h3>
+  <p><b>Contact:</b> <a href="mailto:bubblestzlaundry@gmail.com">bubblestzlaundry@gmail.com</a></p>
+  <p>© 2024 REBI Group. All rights reserved.</p>
+  
+  **Made with ❤️ in Dar es Salaam**
 </div>
-

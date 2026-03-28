@@ -78,7 +78,7 @@ function NotificationToast({ notification, onDismiss }: { notification: AppNotif
 
 import { io } from 'socket.io-client';
 import MapPicker from './components/MapPicker';
-import { calculatePrice, isSaturday, PRICING } from './constants';
+import { calculatePrice, isPromotionDay, PRICING } from './constants';
 import { cn } from './cn';
 
 type OrderStatus = 'Pending' | 'Picked Up' | 'Washing' | 'Drying' | 'Ready for Delivery' | 'Delivered' | 'Cancelled';
@@ -235,7 +235,7 @@ export default function App() {
     location_name: ''
   });
 
-  const saturday = isSaturday();
+  const isWeekend = isPromotionDay();
   formData.address = formData.location_name || formData.address;
   useEffect(() => {
     if (user) {
@@ -665,9 +665,9 @@ export default function App() {
                     <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-2xl">
                       <Package className="text-blue-600 dark:text-blue-400 w-6 h-6" />
                     </div>
-                    {saturday && (
+                    {isWeekend && (
                       <span className="bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-xs font-bold px-2 py-1 rounded-lg uppercase tracking-wider">
-                        Saturday Special
+                        Weekend Special
                       </span>
                     )}
                   </div>
@@ -675,11 +675,11 @@ export default function App() {
                   <p className="text-zinc-500 dark:text-zinc-400 text-sm mb-4">Per kilogram. Includes wash, dry, and fold.</p>
                   <div className="flex items-baseline gap-2">
                     <span className="text-3xl font-display font-bold dark:text-white">
-                      ${saturday ? PRICING.NORMAL.SATURDAY : PRICING.NORMAL.REGULAR}
+                      TSh {isWeekend ? PRICING.NORMAL.SATURDAY : PRICING.NORMAL.REGULAR}
                     </span>
                     <span className="text-zinc-400">/kg</span>
-                    {!saturday && (
-                      <span className="text-zinc-400 line-through text-sm ml-2">${PRICING.NORMAL.REGULAR}</span>
+                    {!isWeekend && (
+                      <span className="text-zinc-400 line-through text-sm ml-2">TSh {PRICING.NORMAL.REGULAR}</span>
                     )}
                   </div>
                 </div>
@@ -689,9 +689,9 @@ export default function App() {
                     <div className="bg-indigo-50 dark:bg-indigo-900/20 p-3 rounded-2xl">
                       <History className="text-indigo-600 dark:text-indigo-400 w-6 h-6" />
                     </div>
-                    {saturday && (
+                    {isWeekend && (
                       <span className="bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-xs font-bold px-2 py-1 rounded-lg uppercase tracking-wider">
-                        Saturday Special
+                        Weekend Special
                       </span>
                     )}
                   </div>
@@ -699,7 +699,7 @@ export default function App() {
                   <p className="text-zinc-500 dark:text-zinc-400 text-sm mb-4">Per item. Deep clean and sanitization.</p>
                   <div className="flex items-baseline gap-2">
                     <span className="text-3xl font-display font-bold dark:text-white">
-                      ${saturday ? PRICING.BLANKET.SATURDAY : PRICING.BLANKET.REGULAR}
+                      TSh {isWeekend ? PRICING.BLANKET.SATURDAY : PRICING.BLANKET.REGULAR}
                     </span>
                     <span className="text-zinc-400">/each</span>
                   </div>
@@ -711,8 +711,8 @@ export default function App() {
                   <Calendar className="text-amber-600 dark:text-amber-400 w-6 h-6" />
                 </div>
                 <div>
-                  <h4 className="font-bold text-amber-900 dark:text-amber-100">Saturday Discount Day!</h4>
-                  <p className="text-amber-700 dark:text-amber-300 text-sm">Save up to 40% every Saturday. Normal clothes at $1.50/kg and blankets at $4.00.</p>
+                  <h4 className="font-bold text-amber-900 dark:text-amber-100">Weekend & Weight Discounts!</h4>
+                  <p className="text-amber-700 dark:text-amber-300 text-sm">Save 25% every Saturday and Sunday. Also get 2% off for every 10kg! Normal clothes at TSh {PRICING.NORMAL.SATURDAY}/kg and blankets at TSh {PRICING.BLANKET.SATURDAY}.</p>
                 </div>
               </section>
             </motion.div>
@@ -859,7 +859,7 @@ export default function App() {
                   <div>
                     <p className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase">Estimated Total</p>
                     <p className="text-3xl font-display font-bold text-sky-600 dark:text-sky-400">
-                      ${calculatePrice(formData.weight, formData.blankets).toFixed(2)}
+                      TSh {calculatePrice(formData.weight, formData.blankets)}
                     </p>
                   </div>
                   <button 
@@ -1259,7 +1259,7 @@ export default function App() {
                       </div>
                       <div>
                         <p className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase">Total Paid</p>
-                        <p className="text-sm font-bold text-sky-600 dark:text-sky-400">${trackingOrder.total_price.toFixed(2)}</p>
+                        <p className="text-sm font-bold text-sky-600 dark:text-sky-400">TSh {Math.round(trackingOrder.total_price)}</p>
                       </div>
                     </div>
                     {trackingOrder.status === 'Pending' && (

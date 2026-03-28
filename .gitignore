@@ -8,3 +8,5 @@ coverage/
 !.env.example
 bubbles.db
 TODO.md
+.vercel
+.vercel_build_output
