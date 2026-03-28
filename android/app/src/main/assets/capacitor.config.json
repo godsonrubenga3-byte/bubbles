@@ -1,8 +1,0 @@
-{
-	"appId": "com.bubblestz.app",
-	"appName": "bubbletz",
-	"webDir": "dist",
-	"server": {
-		"cleartext": true
-	}
-}
