@@ -1,12 +1,35 @@
+# Dependencies
 node_modules/
-build/
+
+# Build Output
 dist/
-coverage/
-.DS_Store
-*.log
-.env*
-!.env.example
-bubbles.db
-TODO.md
+build/
 .vercel
 .vercel_build_output
+coverage/
+
+# Environment Variables
+.env*
+!.env.example
+
+# Local Database
+bubbles.db
+
+# Mobile Development (Capacitor/Android)
+android/
+#*.apk
+capacitor.config.ts
+
+# Documentation & Process
+docs/
+SCHEMA_SETUP.sql
+SUPABASE_SETUP.md
+metadata.json
+TODO.md
+
+# System/Logs
+.DS_Store
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
