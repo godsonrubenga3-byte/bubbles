@@ -1,9 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { MapContainer, TileLayer, CircleMarker, useMapEvents, useMap, Tooltip } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
+import L from 'leaflet';
 import { TANZANIA_BOUNDS } from '../constants';
 import { Navigation, MapPin, Loader2 } from 'lucide-react';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
+
+// Use CDN for leaflet icons to avoid bundling issues
+const iconUrl = 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png';
+const shadowUrl = 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png';
+
+let DefaultIcon = L.icon({
+    iconUrl,
+    shadowUrl,
+    iconSize: [25, 41],
+    iconAnchor: [12, 41]
+});
+
+L.Marker.prototype.options.icon = DefaultIcon;
 
 interface MapPickerProps {
   onLocationSelect: (lat: number, lng: number, name?: string) => void;
@@ -18,15 +32,15 @@ async function getAddress(lat: number, lng: number) {
       }
     });
     const data = await response.json();
-    return data.display_name || `Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+    return data.display_name || `Location: ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
   } catch (error) {
     console.error("Geocoding error:", error);
-    return `Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+    return `Location: ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
   }
 }
 
 /**
- * Fallback geolocation using IP-API (No Google complications)
+ * Fallback geolocation using IP API (HTTPS Safe)
  */
 async function getIpLocation() {
   try {
@@ -46,22 +60,24 @@ async function getIpLocation() {
 }
 
 function LocationMarker({ onLocationSelect, initialPos }: MapPickerProps) {
-  const [position, setPosition] = useState<[number, number] | null>(initialPos || null);
+  const hasValidPos = initialPos && initialPos[0] !== 0 && initialPos[1] !== 0;
+  const [position, setPosition] = useState<L.LatLng | null>(hasValidPos ? L.latLng(initialPos[0], initialPos[1]) : null);
   const map = useMap();
 
   useEffect(() => {
-    if (initialPos) {
-      setPosition(initialPos);
-      map.setView(initialPos, map.getZoom());
+    if (initialPos && initialPos[0] !== 0) {
+      const latlng = L.latLng(initialPos[0], initialPos[1]);
+      setPosition(latlng);
+      map.setView(latlng, map.getZoom());
     }
   }, [initialPos, map]);
 
   useEffect(() => {
     const handleFlyTo = (e: any) => {
       const { lat, lng } = e.detail;
-      const latlng: [number, number] = [lat, lng];
+      const latlng = L.latLng(lat, lng);
       setPosition(latlng);
-      map.flyTo(latlng, 16);
+      map.flyTo(latlng, 17);
     };
     window.addEventListener('map-fly-to', handleFlyTo);
     return () => window.removeEventListener('map-fly-to', handleFlyTo);
@@ -69,29 +85,15 @@ function LocationMarker({ onLocationSelect, initialPos }: MapPickerProps) {
   
   useMapEvents({
     async click(e) {
-      const latlng: [number, number] = [e.latlng.lat, e.latlng.lng];
-      setPosition(latlng);
-      map.flyTo(latlng, map.getZoom());
-      const name = await getAddress(latlng[0], latlng[1]);
-      onLocationSelect(latlng[0], latlng[1], name);
+      setPosition(e.latlng);
+      map.flyTo(e.latlng, map.getZoom());
+      const name = await getAddress(e.latlng.lat, e.latlng.lng);
+      onLocationSelect(e.latlng.lat, e.latlng.lng, name);
     },
   });
 
   return position === null ? null : (
-    <CircleMarker 
-      center={position} 
-      radius={10}
-      pathOptions={{ 
-        fillColor: '#0284c7', 
-        color: 'white', 
-        weight: 3, 
-        fillOpacity: 1 
-      }}
-    >
-      <Tooltip direction="top" offset={[0, -10]} permanent>
-        Pickup Location
-      </Tooltip>
-    </CircleMarker>
+    <Marker position={position}></Marker>
   );
 }
 
@@ -100,45 +102,79 @@ export default function MapPicker({ onLocationSelect, initialPos }: MapPickerPro
   const MapContainerAny = MapContainer as any;
   const TileLayerAny = TileLayer as any;
 
+  const startPos = (initialPos && initialPos[0] !== 0) ? initialPos : TANZANIA_BOUNDS.center;
+
   const handleAutoDetect = async () => {
     setLocating(true);
-    console.log("Starting auto-detect...");
+    console.log("Starting tiered auto-detect...");
     
     try {
-      // 1. Try standard browser/device geolocation
       if (Capacitor.isNativePlatform()) {
         const status = await Geolocation.checkPermissions();
         if (status.location !== 'granted') {
-          await Geolocation.requestPermissions();
+          const reqStatus = await Geolocation.requestPermissions();
+          if (reqStatus.location !== 'granted') {
+            throw new Error("Permission denied");
+          }
         }
       }
 
-      let position;
+      let lat: number = 0;
+      let lng: number = 0;
+      let isEstimate = false;
+
+      // 1. Try High Accuracy
       try {
-        // Try with low accuracy first to avoid hitting Google's high-accuracy positioning (which often causes the 429)
-        position = await Geolocation.getCurrentPosition({
-          enableHighAccuracy: false,
+        const position = await Geolocation.getCurrentPosition({
+          enableHighAccuracy: true,
           timeout: 10000,
-          maximumAge: 30000
+          maximumAge: 0
         });
-      } catch (geoError: any) {
-        console.warn("Standard geolocation failed, trying IP-based fallback...", geoError);
-        // 2. Fallback to IP-API to avoid "Google complications" (429 errors)
-        const ipLoc = await getIpLocation();
-        if (ipLoc) {
-          position = { coords: ipLoc };
-        } else {
-          throw geoError; // Re-throw if even IP fallback fails
+        lat = position.coords.latitude;
+        lng = position.coords.longitude;
+      } catch (e) {
+        console.warn("High accuracy failed, trying standard...");
+        // 2. Try Standard Accuracy
+        try {
+          const position = await Geolocation.getCurrentPosition({
+            enableHighAccuracy: false,
+            timeout: 5000,
+            maximumAge: 60000
+          });
+          lat = position.coords.latitude;
+          lng = position.coords.longitude;
+        } catch (e2) {
+          console.warn("Standard accuracy failed, trying IP fallback...");
+          // 3. Try IP Fallback
+          const ipLoc = await getIpLocation();
+          if (ipLoc) {
+            lat = ipLoc.latitude;
+            lng = ipLoc.longitude;
+            isEstimate = true;
+          } else {
+            throw new Error("All location methods failed");
+          }
         }
       }
 
-      const { latitude, longitude } = position.coords;
-      const name = await getAddress(latitude, longitude);
-      onLocationSelect(latitude, longitude, name);
-      window.dispatchEvent(new CustomEvent('map-fly-to', { detail: { lat: latitude, lng: longitude } }));
+      // Verification
+      if (lat === 0 || lng === 0) throw new Error("Invalid coordinates");
+
+      if (isEstimate) {
+        console.log("Using approximate IP location");
+      }
+
+      const name = await getAddress(lat, lng);
+      onLocationSelect(lat, lng, isEstimate ? `(Approx) ${name}` : name);
+      window.dispatchEvent(new CustomEvent('map-fly-to', { detail: { lat, lng } }));
+
+      if (isEstimate) {
+        alert("Using approximate location. Please move the pin to your exact pickup spot!");
+      }
+
     } catch (error: any) {
       console.error("Auto-detect failed:", error);
-      alert("Auto-detect failed due to browser limitations. Please tap your location on the map manually.");
+      alert("We couldn't find your location automatically. Please tap your pickup spot on the map!");
     } finally {
       setLocating(false);
     }
@@ -148,7 +184,7 @@ export default function MapPicker({ onLocationSelect, initialPos }: MapPickerPro
     <div className="space-y-3 relative z-0 isolate">
       <div className="relative h-64 w-full rounded-3xl overflow-hidden border border-zinc-200 dark:border-zinc-800 shadow-inner group">
         <MapContainerAny 
-          center={initialPos || TANZANIA_BOUNDS.center} 
+          center={startPos} 
           zoom={TANZANIA_BOUNDS.zoom} 
           scrollWheelZoom={false}
           style={{ height: '100%', width: '100%', zIndex: 0 }}

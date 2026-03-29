@@ -237,33 +237,30 @@ export default function App() {
     setNotifications(prev => prev.filter(n => n.id !== id));
   };
 
-  // Real-time WebSocket connection for status updates
+  // 1. POLLING LOGIC: Only "ping" when tracking or viewing history
   useEffect(() => {
-    if (!user) return;
+    if (!user || (view !== 'track' && view !== 'history')) return;
 
-    const socket = io(API_BASE_URL);
-
-    socket.on("connect", () => {
-      console.log("Connected to WebSocket");
-      socket.emit("join", user.id);
-    });
-
-    socket.on("order_status_update", (data: { orderId: string, status: OrderStatus, message: string }) => {
-      setOrderHistory(prev => prev.map(o => 
-        o.id === data.orderId ? { ...o, status: data.status } : o
-      ));
-
-      if (trackingOrder && trackingOrder.id === data.orderId) {
-        setTrackingOrder(prev => prev ? { ...prev, status: data.status } : null);
+    const poll = () => {
+      if (document.visibilityState === 'visible') {
+        console.log("Polling for updates (Read-only)...");
+        fetchUserHistory(true); // silent fetch
       }
-
-      addNotification('Order Updated', data.message, 'success');
-    });
-
-    return () => {
-      socket.disconnect();
     };
-  }, [user, trackingOrder?.id]);
+
+    // Initial fetch on mount
+    poll();
+
+    // Poll every 10 seconds (standard for delivery apps to save battery/data)
+    const pollingInterval = setInterval(poll, 10000); 
+    return () => clearInterval(pollingInterval);
+  }, [user, view, trackingOrder?.id]);
+
+  // 2. LOCAL STORAGE SYNC: Keep user data on disk for "no-ping" retrieval
+  const syncToSupabase = async (userData: UserData) => {
+    localStorage.setItem('bubbletz_user', JSON.stringify(userData));
+    setUser(userData);
+  };
 
   const [formData, setFormData] = useState({
     name: '',
@@ -277,6 +274,7 @@ export default function App() {
   });
 
   const isWeekend = isPromotionDay();
+
   useEffect(() => {
     if (user) {
       setFormData(prev => ({
@@ -328,23 +326,6 @@ export default function App() {
     setIsRefreshing(true);
     await fetchUserHistory(true);
     hapticSuccess();
-  };
-
-  useEffect(() => {
-    if (!user) return;
-    const poll = () => {
-      if (document.visibilityState === 'visible') {
-        fetchUserHistory();
-      }
-    };
-    poll();
-    const pollingInterval = setInterval(poll, 1000); 
-    return () => clearInterval(pollingInterval);
-  }, [user, trackingOrder?.id, trackingOrder?.status]); 
-
-  const syncToSupabase = async (userData: UserData) => {
-    localStorage.setItem('bubbletz_user', JSON.stringify(userData));
-    setUser(userData);
   };
 
   const handleAuth = async (e: React.FormEvent) => {
