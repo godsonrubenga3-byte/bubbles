@@ -35,8 +35,8 @@ We believe in premium quality at fair prices. Check out our rates and **massive 
 
 | Service | Regular Price | Weekend Special (Sat & Sun) |
 | :--- | :--- | :--- |
-| **Normal Clothes (per kg)** | TSh 9999 | **TSh 7499** 🔥 |
-| **Blankets (per item)** | TSh 1499 | **TSh 1124** 🔥 |
+| **Normal Clothes (per kg)** | TSh 10,000 | **TSh 7,500** 🔥 |
+| **Blankets (per item)** | TSh 15,000 | **TSh 11,250** 🔥 |
 
 ### 🎊 Huge Savings
 - **Weekend Special:** Get a flat **25% OFF** every Saturday and Sunday!

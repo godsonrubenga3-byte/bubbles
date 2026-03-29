@@ -1,22 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
-import L from 'leaflet';
+import { MapContainer, TileLayer, CircleMarker, useMapEvents, useMap, Tooltip } from 'react-leaflet';
 import { TANZANIA_BOUNDS } from '../constants';
 import { Navigation, MapPin, Loader2 } from 'lucide-react';
 import { Geolocation } from '@capacitor/geolocation';
-
-// Use CDN for leaflet icons to avoid bundling issues
-const iconUrl = 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png';
-const shadowUrl = 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png';
-
-let DefaultIcon = L.icon({
-    iconUrl,
-    shadowUrl,
-    iconSize: [25, 41],
-    iconAnchor: [12, 41]
-});
-
-L.Marker.prototype.options.icon = DefaultIcon;
 
 interface MapPickerProps {
   onLocationSelect: (lat: number, lng: number, name?: string) => void;
@@ -25,33 +11,54 @@ interface MapPickerProps {
 
 async function getAddress(lat: number, lng: number) {
   try {
-    const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`);
+    const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`, {
+      headers: {
+        'User-Agent': 'bubbletz-laundry-app'
+      }
+    });
     const data = await response.json();
-    return data.display_name;
+    return data.display_name || `Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
   } catch (error) {
     console.error("Geocoding error:", error);
     return `Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
   }
 }
 
+/**
+ * Fallback geolocation using IP-API (No Google complications)
+ */
+async function getIpLocation() {
+  try {
+    const response = await fetch('http://ip-api.com/json');
+    const data = await response.json();
+    if (data && data.status === 'success') {
+      return {
+        latitude: data.lat,
+        longitude: data.lon
+      };
+    }
+    return null;
+  } catch (error) {
+    console.error("IP Geolocation error:", error);
+    return null;
+  }
+}
+
 function LocationMarker({ onLocationSelect, initialPos }: MapPickerProps) {
-  const [position, setPosition] = useState<L.LatLng | null>(initialPos ? L.latLng(initialPos[0], initialPos[1]) : null);
+  const [position, setPosition] = useState<[number, number] | null>(initialPos || null);
   const map = useMap();
 
-  // Update position when initialPos prop changes (e.g., when profile/address changes)
   useEffect(() => {
     if (initialPos) {
-      const latlng = L.latLng(initialPos[0], initialPos[1]);
-      setPosition(latlng);
-      map.setView(latlng, map.getZoom());
+      setPosition(initialPos);
+      map.setView(initialPos, map.getZoom());
     }
   }, [initialPos, map]);
 
-  // Listen for internal fly-to events (for auto-detect)
   useEffect(() => {
     const handleFlyTo = (e: any) => {
       const { lat, lng } = e.detail;
-      const latlng = L.latLng(lat, lng);
+      const latlng: [number, number] = [lat, lng];
       setPosition(latlng);
       map.flyTo(latlng, 16);
     };
@@ -61,15 +68,29 @@ function LocationMarker({ onLocationSelect, initialPos }: MapPickerProps) {
   
   useMapEvents({
     async click(e) {
-      setPosition(e.latlng);
-      map.flyTo(e.latlng, map.getZoom());
-      const name = await getAddress(e.latlng.lat, e.latlng.lng);
-      onLocationSelect(e.latlng.lat, e.latlng.lng, name);
+      const latlng: [number, number] = [e.latlng.lat, e.latlng.lng];
+      setPosition(latlng);
+      map.flyTo(latlng, map.getZoom());
+      const name = await getAddress(latlng[0], latlng[1]);
+      onLocationSelect(latlng[0], latlng[1], name);
     },
   });
 
   return position === null ? null : (
-    <Marker position={position}></Marker>
+    <CircleMarker 
+      center={position} 
+      radius={10}
+      pathOptions={{ 
+        fillColor: '#0284c7', 
+        color: 'white', 
+        weight: 3, 
+        fillOpacity: 1 
+      }}
+    >
+      <Tooltip direction="top" offset={[0, -10]} permanent>
+        Pickup Location
+      </Tooltip>
+    </CircleMarker>
   );
 }
 
@@ -80,52 +101,54 @@ export default function MapPicker({ onLocationSelect, initialPos }: MapPickerPro
 
   const handleAutoDetect = async () => {
     setLocating(true);
+    console.log("Starting auto-detect...");
     
     try {
-      // Check for permissions first
-      const permission = await Geolocation.checkPermissions();
-      
-      if (permission.location !== 'granted' && permission.location !== 'limited') {
-        const request = await Geolocation.requestPermissions();
-        if (request.location !== 'granted' && request.location !== 'limited') {
-          alert("Location permission denied. Please enable location access in your device settings.");
-          setLocating(false);
-          return;
+      // 1. Try standard browser/device geolocation
+      const status = await Geolocation.checkPermissions();
+      if (status.location !== 'granted') {
+        await Geolocation.requestPermissions();
+      }
+
+      let position;
+      try {
+        // Try with low accuracy first to avoid hitting Google's high-accuracy positioning (which often causes the 429)
+        position = await Geolocation.getCurrentPosition({
+          enableHighAccuracy: false,
+          timeout: 10000,
+          maximumAge: 30000
+        });
+      } catch (geoError: any) {
+        console.warn("Standard geolocation failed, trying IP-based fallback...", geoError);
+        // 2. Fallback to IP-API to avoid "Google complications" (429 errors)
+        const ipLoc = await getIpLocation();
+        if (ipLoc) {
+          position = { coords: ipLoc };
+        } else {
+          throw geoError; // Re-throw if even IP fallback fails
         }
       }
 
-      const position = await Geolocation.getCurrentPosition({
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0
-      });
-
       const { latitude, longitude } = position.coords;
-      console.log(`Detected location: ${latitude}, ${longitude}`);
-      
       const name = await getAddress(latitude, longitude);
       onLocationSelect(latitude, longitude, name);
       window.dispatchEvent(new CustomEvent('map-fly-to', { detail: { lat: latitude, lng: longitude } }));
     } catch (error: any) {
-      console.error("Geolocation error:", error);
-      let msg = "Unable to retrieve your location.";
-      if (error.message.includes("denied")) msg = "Location permission denied. Please enable location access in settings.";
-      else if (error.message.includes("timeout")) msg = "Location request timed out. Please try again or tap the map.";
-      
-      alert(msg);
+      console.error("Auto-detect failed:", error);
+      alert("Auto-detect failed due to browser limitations. Please tap your location on the map manually.");
     } finally {
       setLocating(false);
     }
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 relative z-0 isolate">
       <div className="relative h-64 w-full rounded-3xl overflow-hidden border border-zinc-200 dark:border-zinc-800 shadow-inner group">
         <MapContainerAny 
           center={initialPos || TANZANIA_BOUNDS.center} 
           zoom={TANZANIA_BOUNDS.zoom} 
           scrollWheelZoom={false}
-          style={{ height: '100%', width: '100%' }}
+          style={{ height: '100%', width: '100%', zIndex: 0 }}
         >
           <TileLayerAny
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'

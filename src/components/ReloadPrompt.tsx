@@ -15,13 +15,13 @@ function ReloadPrompt() {
 
   // Be ultra-defensive with destructuring
   const offlineReadyState = sw?.offlineReady;
-  const needUpdateState = sw?.needUpdate;
+  const needRefreshState = sw?.needRefresh;
   
   const offlineReady = Array.isArray(offlineReadyState) ? offlineReadyState[0] : !!offlineReadyState;
   const setOfflineReady = Array.isArray(offlineReadyState) ? offlineReadyState[1] : (() => {});
   
-  const needUpdate = Array.isArray(needUpdateState) ? needUpdateState[0] : !!needUpdateState;
-  const setNeedUpdate = Array.isArray(needUpdateState) ? needUpdateState[1] : (() => {});
+  const needRefresh = Array.isArray(needRefreshState) ? needRefreshState[0] : !!needRefreshState;
+  const setNeedUpdate = Array.isArray(needRefreshState) ? needRefreshState[1] : (() => {});
   
   const updateServiceWorker = sw?.updateServiceWorker || (() => Promise.resolve());
 
@@ -32,7 +32,7 @@ function ReloadPrompt() {
 
   return (
     <AnimatePresence>
-      {(offlineReady || needUpdate) && (
+      {(offlineReady || needRefresh) && (
         <motion.div
           initial={{ y: 50, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
@@ -47,7 +47,7 @@ function ReloadPrompt() {
               <p className="text-sm font-bold dark:text-white">
                 {offlineReady ? 'App ready to work offline' : 'New version available!'}
               </p>
-              {needUpdate && (
+              {needRefresh && (
                 <button
                   onClick={() => updateServiceWorker(true)}
                   className="text-xs font-bold text-sky-600 dark:text-sky-400 hover:underline mt-1"

@@ -8,11 +8,19 @@
 }
 
 body {
-  @apply bg-zinc-50 text-zinc-900 transition-colors duration-300;
+  @apply bg-zinc-50 text-zinc-900 transition-colors duration-500 antialiased;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  overscroll-behavior-y: none;
 }
 
-.dark body {
+html.dark body {
   @apply bg-zinc-950 text-zinc-50;
+}
+
+/* Allow text selection only in inputs and textareas */
+input, textarea {
+  user-select: text !important;
 }
 
 .leaflet-container {

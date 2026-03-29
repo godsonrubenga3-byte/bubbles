@@ -25,13 +25,30 @@ import {
   MessageSquare,
   Map as MapIcon,
   Bell,
-  Mail
+  Mail,
+  Edit,
+  RefreshCw,
+  FileText,
+  ShieldCheck,
+  Smartphone,
+  Check
 } from 'lucide-react';
+import { io } from 'socket.io-client';
+import { Haptics, ImpactStyle } from '@capacitor/haptics';
 import ReloadPrompt from './components/ReloadPrompt';
+import MapPicker from './components/MapPicker';
+import LandingPage from './components/LandingPage';
+import { Skeleton, OrderSkeleton, TrackingSkeleton } from './components/Skeleton';
+import { ConfirmationModal } from './components/ConfirmationModal';
+import { SuccessAnimation } from './components/SuccessAnimation';
+import { OnboardingGuide } from './components/OnboardingGuide';
+import { SupportChat } from './components/SupportChat';
+import { calculatePrice, isPromotionDay, PRICING, getApiUrl, API_BASE_URL } from './constants';
+import { cn } from './cn';
 
 const BubblesIcon = ({ className }: { className?: string }) => (
   <img 
-    src="/android-icon-192x192.png" 
+    src="/images/logo.png" 
     alt="bubbletz logo" 
     className={cn("object-contain", className)}
   />
@@ -76,14 +93,7 @@ function NotificationToast({ notification, onDismiss }: { notification: AppNotif
   );
 }
 
-import { io } from 'socket.io-client';
-import MapPicker from './components/MapPicker';
-import { calculatePrice, isPromotionDay, PRICING } from './constants';
-import { calculatePrice, isSaturday, PRICING, getApiUrl, API_BASE_URL } from './constants';
-import { cn } from './cn';
-import { Haptics, ImpactStyle } from '@capacitor/haptics';
-
-const hapticClick = async () => {
+export const hapticClick = async () => {
   try {
     await Haptics.impact({ style: ImpactStyle.Light });
   } catch (e) {
@@ -141,9 +151,11 @@ export default function App() {
   useEffect(() => {
     if (darkMode) {
       document.documentElement.classList.add('dark');
+      document.body.classList.add('dark');
       localStorage.setItem('bubbletz_theme', 'dark');
     } else {
       document.documentElement.classList.remove('dark');
+      document.body.classList.remove('dark');
       localStorage.setItem('bubbletz_theme', 'light');
     }
   }, [darkMode]);
@@ -160,8 +172,8 @@ export default function App() {
     }
   });
 
-  const [view, setView] = useState<'home' | 'order' | 'track' | 'history' | 'auth' | 'settings'>(() => {
-    return user ? 'home' : 'auth';
+  const [view, setView] = useState<'landing' | 'home' | 'order' | 'track' | 'history' | 'auth' | 'settings'>(() => {
+    return user ? 'home' : 'landing';
   });
 
   const [authMode, setAuthMode] = useState<'login' | 'signup' | 'recover'>('login');
@@ -194,9 +206,27 @@ export default function App() {
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [trackingOrder, setTrackingOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [isSuccessAnimationDone, setIsSuccessAnimationDone] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(() => !localStorage.getItem('bubbletz_onboarded'));
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState<string | null>(null);
+  const [showReceipt, setShowReceipt] = useState<Order | null>(null);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [notifSettings, setNotifSettings] = useState(() => {
+    try {
+      const saved = localStorage.getItem('bubbletz_notif_settings');
+      return saved ? JSON.parse(saved) : { push: true, email: true, whatsapp: true };
+    } catch {
+      return { push: true, email: true, whatsapp: true };
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('bubbletz_notif_settings', JSON.stringify(notifSettings));
+  }, [notifSettings]);
 
   const addNotification = (title: string, message: string, type: AppNotification['type'] = 'info') => {
     const id = Math.random().toString(36).substr(2, 9);
@@ -247,7 +277,6 @@ export default function App() {
   });
 
   const isWeekend = isPromotionDay();
-  formData.address = formData.location_name || formData.address;
   useEffect(() => {
     if (user) {
       setFormData(prev => ({
@@ -269,8 +298,9 @@ export default function App() {
     }
   }, [orderHistory]);
 
-  const fetchUserHistory = async () => {
+  const fetchUserHistory = async (silent = false) => {
     if (!user) return;
+    if (!silent) setLoading(true);
     try {
       const response = await fetch(getApiUrl(`/api/orders/user/${user.id}`));
       if (response.ok) {
@@ -287,7 +317,17 @@ export default function App() {
       }
     } catch (err) {
       console.error("Failed to fetch history", err);
+    } finally {
+      setLoading(false);
+      setIsRefreshing(false);
     }
+  };
+
+  const handleRefresh = async () => {
+    hapticClick();
+    setIsRefreshing(true);
+    await fetchUserHistory(true);
+    hapticSuccess();
   };
 
   useEffect(() => {
@@ -376,13 +416,13 @@ export default function App() {
   };
 
   const handleLogout = () => {
-    setUser(null);
     localStorage.removeItem('bubbletz_user');
-    setView('auth');
+    setUser(null);
+    setView('landing');
+    hapticClick();
   };
 
   const handleCancelOrder = async (id: string) => {
-    if (!confirm('Are you sure you want to cancel this order?')) return;
     setLoading(true);
     try {
       const response = await fetch(getApiUrl(`/api/orders/${id}/cancel`), { method: 'POST' });
@@ -394,8 +434,11 @@ export default function App() {
       if (trackingOrder && trackingOrder.id === id) {
         setTrackingOrder({ ...trackingOrder, status: 'Cancelled' });
       }
+      addNotification('Order Cancelled', `Order ${id} has been cancelled.`, 'info');
+      hapticClick();
     } catch (err: any) {
-      alert(err.message);
+      console.error("Cancel error:", err);
+      setError(err.message);
     } finally {
       setLoading(false);
     }
@@ -437,12 +480,20 @@ export default function App() {
 
     setLoading(true);
     setError('');
-    
+
     const timestamp = Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
     const totalPrice = calculatePrice(formData.weight, formData.blankets);
+    const generatedId = editingOrder ? editingOrder.id : "BBL-" + timestamp.toUpperCase();
+
+    if (!editingOrder) {
+      setOrderId(generatedId);
+      setIsSuccessAnimationDone(false);
+      setShowSuccessModal(true);
+      hapticClick();
+    }
 
     const orderData = {
-      id: editingOrder ? editingOrder.id : "BBL-" + timestamp.toUpperCase(),
+      id: generatedId,
       user_id: user?.id,
       customer_name: formData.name,
       phone: formData.phone,
@@ -476,8 +527,9 @@ export default function App() {
         };
         setOrderHistory(prev => prev.map(o => o.id === editingOrder.id ? updatedOrder : o));
         setEditingOrder(null);
+        setLoading(false);
         alert('Order updated successfully!');
-        setView('history');
+        setView('home');
       } else {
         const newOrder: Order = {
           ...orderData,
@@ -485,31 +537,21 @@ export default function App() {
           created_at: new Date().toISOString()
         };
 
-        setOrderHistory([newOrder, ...orderHistory]);
-        setOrderId(orderData.id);
-        hapticSuccess();
-        setShowSuccessModal(true);
+        setOrderHistory(prev => [newOrder, ...prev]);
+
+        // Wait for the animation to feel natural
+        setTimeout(() => {
+          setIsSuccessAnimationDone(true);
+          hapticSuccess();
+        }, 2000);
       }
-      
-      setFormData({ 
-        name: user?.name || '', 
-        phone: user?.phone || '', 
-        address: user?.address || '', 
-        weight: 0, 
-        blankets: 0, 
-        lat: user?.lat || 0, 
-        lng: user?.lng || 0,
-        location_name: user?.location_name || ''
-      });
     } catch (err: any) {
       console.error("Order error:", err);
       setError(err.message || "Failed to place order.");
-    } finally {
+      setShowSuccessModal(false);
       setLoading(false);
     }
-  };
-
-  const statusSteps: OrderStatus[] = ['Pending', 'Picked Up', 'Washing', 'Drying', 'Ready for Delivery', 'Delivered'];
+    };  const statusSteps: OrderStatus[] = ['Pending', 'Picked Up', 'Washing', 'Drying', 'Ready for Delivery', 'Delivered'];
   const getStatusIndex = (status: OrderStatus) => statusSteps.indexOf(status);
 
   const NavButton = ({ target, icon: Icon, label }: { target: any, icon: any, label: string }) => {
@@ -548,75 +590,116 @@ export default function App() {
       <AnimatePresence>
         {showSuccessModal && (
           <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => { hapticClick(); setShowSuccessModal(false); }}
               className="absolute inset-0 bg-black/60 backdrop-blur-md"
             />
-            <motion.div 
+            <motion.div
               initial={{ scale: 0.8, opacity: 0, y: 50 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.8, opacity: 0, y: 50 }}
               className="relative bg-white dark:bg-zinc-900 w-full max-w-sm rounded-[40px] p-10 shadow-2xl border border-zinc-200 dark:border-zinc-800 text-center space-y-8"
             >
-              <div className="w-24 h-24 mx-auto drop-shadow-2xl">
-                <BubblesIcon className="w-full h-full" />
-              </div>
-              <div className="space-y-3">
-                <h3 className="text-3xl font-display font-bold dark:text-white">Success!</h3>
-                <p className="text-zinc-500 dark:text-zinc-400 leading-relaxed">
-                  Your order <span className="font-bold text-sky-600 dark:text-sky-400">#{orderId}</span> is in safe hands. We'll be there soon!
+              <SuccessAnimation isDone={isSuccessAnimationDone} />
+
+              <div className="space-y-4">
+                <h3 className="text-3xl font-display font-bold dark:text-white leading-tight">
+                  {isSuccessAnimationDone ? "Order Placed!" : "Placing Order..."}
+                </h3>
+                <p className="text-zinc-500 dark:text-zinc-400 leading-relaxed text-sm">
+                  {isSuccessAnimationDone 
+                    ? `Your order #${orderId} is in safe hands. We'll be there soon!`
+                    : "Wait while we confirm your pickup request..."
+                  }
                 </p>
               </div>
-              <button 
-                onClick={() => {
-                  hapticSuccess();
-                  setShowSuccessModal(false);
-                  setView('track');
-                  handleTrack();
-                }}
-                className="w-full bg-sky-600 text-white py-5 rounded-[24px] font-bold hover:bg-sky-700 active:scale-95 transition-all shadow-xl shadow-sky-200 dark:shadow-sky-900/30"
-              >
-                Track My Order
-              </button>
+
+              {isSuccessAnimationDone && (
+                <div className="flex flex-col gap-3 pt-4">
+                  <button 
+                    onClick={() => { 
+                      hapticClick(); 
+                      setShowSuccessModal(false); 
+                      setView('track'); 
+                      handleTrack(); 
+                      setLoading(false);
+                      setFormData({ 
+                        name: user?.name || '', 
+                        phone: user?.phone || '', 
+                        address: user?.address || '', 
+                        weight: 0, 
+                        blankets: 0, 
+                        lat: user?.lat || 0, 
+                        lng: user?.lng || 0, 
+                        location_name: user?.location_name || '' 
+                      });
+                    }}
+                    className="w-full bg-sky-600 text-white py-4 rounded-2xl font-bold hover:bg-sky-700 active:scale-95 transition-all shadow-lg shadow-sky-200 dark:shadow-sky-900/20"
+                  >
+                    Track My Order
+                  </button>
+                  <button 
+                    onClick={() => { 
+                      hapticClick(); 
+                      setShowSuccessModal(false); 
+                      setView('home'); 
+                      setLoading(false);
+                      setFormData({ 
+                        name: user?.name || '', 
+                        phone: user?.phone || '', 
+                        address: user?.address || '', 
+                        weight: 0, 
+                        blankets: 0, 
+                        lat: user?.lat || 0, 
+                        lng: user?.lng || 0, 
+                        location_name: user?.location_name || '' 
+                      });
+                    }}
+                    className="w-full py-3 text-zinc-500 font-bold hover:text-zinc-700 dark:hover:text-zinc-300 text-sm"
+                  >
+                    Go Back Home
+                  </button>
+                </div>
+              )}
             </motion.div>
           </div>
-        )}
-      </AnimatePresence>
+        )}      </AnimatePresence>
 
-      <header className="sticky top-0 z-50 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-xl border-b border-zinc-200/50 dark:border-zinc-800/50 px-6 py-4 pt-[calc(env(safe-area-inset-top,0px)+16px)]">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <div 
-            className="flex items-center gap-3 cursor-pointer group" 
-            onClick={() => { hapticClick(); setView('home'); setTrackingOrder(null); }}
-          >
-            <BubblesIcon className="w-9 h-9 drop-shadow-md group-active:scale-90 transition-transform" />
-            <div>
-              <h1 className="text-xl font-display font-bold tracking-tight text-zinc-900 dark:text-white uppercase leading-none">bubbletz</h1>
-              <p className="text-[10px] font-bold text-sky-600 dark:text-sky-400 uppercase tracking-widest mt-0.5">Laundry Service</p>
+      {view !== 'landing' && view !== 'auth' && (
+        <header className="sticky top-0 z-50 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-xl border-b border-zinc-200/50 dark:border-zinc-800/50 px-6 py-4 pt-[calc(env(safe-area-inset-top,0px)+16px)]">
+          <div className="max-w-4xl mx-auto flex items-center justify-between">
+            <div 
+              className="flex items-center gap-3 cursor-pointer group" 
+              onClick={() => { hapticClick(); setView('home'); setTrackingOrder(null); }}
+            >
+              <BubblesIcon className="w-9 h-9 drop-shadow-md group-active:scale-90 transition-transform" />
+              <div>
+                <h1 className="text-xl font-display font-bold tracking-tight text-zinc-900 dark:text-white uppercase leading-none">bubbletz</h1>
+                <p className="text-[10px] font-bold text-sky-600 dark:text-sky-400 uppercase tracking-widest mt-0.5">Laundry Service</p>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => { hapticClick(); setDarkMode(!darkMode); }}
+                className="p-2.5 rounded-2xl bg-zinc-100 dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 hover:scale-105 active:scale-90 transition-all border border-zinc-200/50 dark:border-zinc-800/50"
+              >
+                {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+              </button>
+              {!user && (
+                <button 
+                  onClick={() => { hapticClick(); setView('auth'); }}
+                  className="bg-sky-600 text-white px-5 py-2.5 rounded-2xl font-bold text-sm shadow-lg shadow-sky-200 dark:shadow-sky-900/20 active:scale-95 transition-all"
+                >
+                  Login
+                </button>
+              )}
             </div>
           </div>
-          
-          <div className="flex items-center gap-2">
-            <button 
-              onClick={() => { hapticClick(); setDarkMode(!darkMode); }}
-              className="p-2.5 rounded-2xl bg-zinc-100 dark:bg-zinc-900 text-zinc-500 dark:text-zinc-400 hover:scale-105 active:scale-90 transition-all border border-zinc-200/50 dark:border-zinc-800/50"
-            >
-              {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-            </button>
-            {!user && (
-              <button 
-                onClick={() => { hapticClick(); setView('auth'); }}
-                className="bg-sky-600 text-white px-5 py-2.5 rounded-2xl font-bold text-sm shadow-lg shadow-sky-200 dark:shadow-sky-900/20 active:scale-95 transition-all"
-              >
-                Login
-              </button>
-            )}
-          </div>
-        </div>
-      </header>
+        </header>
+      )}
 
       <main className="max-w-4xl mx-auto p-4 pb-32">
         <AnimatePresence mode="wait">
@@ -676,12 +759,12 @@ export default function App() {
                   <h3 className="text-xl font-bold mb-1 dark:text-white">Normal Clothes</h3>
                   <p className="text-zinc-500 dark:text-zinc-400 text-sm mb-4">Per kilogram. Includes wash, dry, and fold.</p>
                   <div className="flex items-baseline gap-2">
-                    <span className="text-3xl font-display font-bold dark:text-white">
-                      TSh {isWeekend ? PRICING.NORMAL.SATURDAY : PRICING.NORMAL.REGULAR}
+                    <span className="text-2xl font-display font-bold dark:text-white">
+                      TSh {(isWeekend ? PRICING.NORMAL.SATURDAY : PRICING.NORMAL.REGULAR).toLocaleString()}
                     </span>
                     <span className="text-zinc-400">/kg</span>
-                    {!isWeekend && (
-                      <span className="text-zinc-400 line-through text-sm ml-2">TSh {PRICING.NORMAL.REGULAR}</span>
+                    {isWeekend && (
+                      <span className="text-zinc-400 line-through text-sm ml-2">TSh {PRICING.NORMAL.REGULAR.toLocaleString()}</span>
                     )}
                   </div>
                 </div>
@@ -700,22 +783,25 @@ export default function App() {
                   <h3 className="text-xl font-bold mb-1 dark:text-white">Blankets</h3>
                   <p className="text-zinc-500 dark:text-zinc-400 text-sm mb-4">Per item. Deep clean and sanitization.</p>
                   <div className="flex items-baseline gap-2">
-                    <span className="text-3xl font-display font-bold dark:text-white">
-                      TSh {isWeekend ? PRICING.BLANKET.SATURDAY : PRICING.BLANKET.REGULAR}
+                    <span className="text-2xl font-display font-bold dark:text-white">
+                      TSh {(isWeekend ? PRICING.BLANKET.SATURDAY : PRICING.BLANKET.REGULAR).toLocaleString()}
                     </span>
                     <span className="text-zinc-400">/each</span>
+                    {isWeekend && (
+                      <span className="text-zinc-400 line-through text-sm ml-2">TSh {PRICING.BLANKET.REGULAR.toLocaleString()}</span>
+                    )}
                   </div>
                 </div>
               </section>
 
-              {saturday && (
+              {isWeekend && (
                 <section className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 rounded-3xl p-6 flex items-center gap-4">
                   <div className="bg-amber-100 dark:bg-amber-900/20 p-3 rounded-2xl">
                     <Calendar className="text-amber-600 dark:text-amber-400 w-6 h-6" />
                   </div>
                   <div>
                     <h4 className="font-bold text-amber-900 dark:text-amber-100">Weekend & Weight Discounts!</h4>
-                    <p className="text-amber-700 dark:text-amber-300 text-sm">Save 25% every Saturday and Sunday. Also get 2% off for every 10kg! Normal clothes at TSh {PRICING.NORMAL.SATURDAY}/kg and blankets at TSh {PRICING.BLANKET.SATURDAY}.</p>
+                    <p className="text-amber-700 dark:text-amber-300 text-sm">Save 25% every Saturday and Sunday. Also get 2% off for every 10kg! Normal clothes at TSh {PRICING.NORMAL.SATURDAY.toLocaleString()}/kg and blankets at TSh {PRICING.BLANKET.SATURDAY.toLocaleString()}.</p>
                   </div>
                 </section>
               )}
@@ -752,36 +838,67 @@ export default function App() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Full Name</label>
-                      <input 
-                        required
-                        type="text" 
-                        placeholder="John Doe"
-                        className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all"
-                        value={formData.name}
-                        onChange={e => setFormData({...formData, name: e.target.value})}
-                      />
+                      <div className="relative">
+                        <input 
+                          required
+                          type="text" 
+                          placeholder="John Doe"
+                          className={cn(
+                            "w-full px-4 py-3 rounded-2xl border dark:bg-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 transition-all",
+                            formData.name.length > 2 ? "border-emerald-500/50 pr-10" : "border-zinc-200 dark:border-zinc-800"
+                          )}
+                          value={formData.name}
+                          onChange={e => setFormData({...formData, name: e.target.value})}
+                        />
+                        {formData.name.length > 2 && (
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-500">
+                            <CheckCircle2 className="w-5 h-5" />
+                          </div>
+                        )}
+                      </div>
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Phone Number</label>
-                      <input 
-                        required
-                        type="tel" 
-                        placeholder="07 ....."
-                        className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all"
-                        value={formData.phone}
-                        onChange={e => setFormData({...formData, phone: e.target.value})}
-                      />
+                      <div className="relative">
+                        <input 
+                          required
+                          type="tel" 
+                          placeholder="07 ....."
+                          inputMode="tel"
+                          className={cn(
+                            "w-full px-4 py-3 rounded-2xl border dark:bg-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 transition-all",
+                            formData.phone.startsWith('0') && formData.phone.length >= 10 ? "border-emerald-500/50 pr-10" : "border-zinc-200 dark:border-zinc-800"
+                          )}
+                          value={formData.phone}
+                          onChange={e => setFormData({...formData, phone: e.target.value})}
+                        />
+                        {formData.phone.startsWith('0') && formData.phone.length >= 10 && (
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-500">
+                            <CheckCircle2 className="w-5 h-5" />
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Pickup Address</label>
-                    <textarea 
-                      required
-                      placeholder="Kariakoo, Dar es Salaam..."
-                      className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all h-24 resize-none"
-                      value={formData.address}
-                      onChange={e => setFormData({...formData, address: e.target.value})}
-                    />
+                    <div className="relative">
+                      <textarea 
+                        required
+                        placeholder="Kariakoo, Dar es Salaam..."
+                        className={cn(
+                          "w-full px-4 py-3 rounded-2xl border dark:bg-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 transition-all h-24 resize-none",
+                          formData.address.length > 5 ? "border-emerald-500/50 pr-10" : "border-zinc-200 dark:border-zinc-800"
+                        )}
+                        value={formData.address}
+                        onChange={e => setFormData({...formData, address: e.target.value})}
+                      />
+                      {formData.address.length > 5 && (
+                        <div className="absolute right-3 top-4 text-emerald-500">
+                          <CheckCircle2 className="w-5 h-5" />
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -846,10 +963,17 @@ export default function App() {
                     <MapPin className="w-5 h-5 text-sky-500" />
                     Pickup Location
                   </h3>
-                  <MapPicker 
+                  <MapPicker
                     initialPos={(formData.lat && formData.lng) ? [formData.lat, formData.lng] : undefined}
-                    onLocationSelect={(lat, lng, name) => setFormData({...formData, lat, lng, location_name: name || ''})} 
+                    onLocationSelect={(lat, lng, name) => setFormData(prev => ({ 
+                      ...prev, 
+                      lat, 
+                      lng, 
+                      location_name: name || '',
+                      address: name || prev.address 
+                    }))}
                   />
+
                   {formData.location_name && (
                     <p className="text-xs text-sky-600 dark:text-sky-400 font-medium">Detected: {formData.location_name}</p>
                   )}
@@ -870,27 +994,37 @@ export default function App() {
                   </div>
                   <button 
                     disabled={loading}
-                    onClick={() => hapticClick()}
-                    className="bg-sky-600 text-white px-8 py-4 rounded-2xl font-bold hover:bg-sky-700 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-sky-200 dark:shadow-sky-900/20"
+                    type="submit"
+                    onClick={() => !loading && hapticClick()}
+                    className="bg-sky-600 text-white px-8 py-4 rounded-2xl font-bold hover:bg-sky-700 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-sky-200 dark:shadow-sky-900/20"
                   >
-                    {loading ? 'Processing...' : 'Confirm Pickup'}
+                    Confirm Pickup
                   </button>
                 </div>
               </form>
             </motion.div>
           )}
 
-          {view === 'auth' && (
-            <motion.div 
-              key="auth"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="max-w-xl mx-auto"
-            >
+            {view === 'landing' && (
+              <LandingPage 
+                darkMode={darkMode}
+                onToggleDarkMode={() => setDarkMode(!darkMode)}
+                onGetStarted={() => { setAuthMode('signup'); setView('auth'); hapticClick(); }}
+                onLogin={() => { setAuthMode('login'); setView('auth'); hapticClick(); }}
+              />
+            )}
+
+            {view === 'auth' && (
+              <motion.div 
+                key="auth"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ type: "spring", damping: 25, stiffness: 200 }}
+                className="max-w-xl mx-auto"
+              >
               <div className="bg-white dark:bg-zinc-900 p-8 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm space-y-6">
-                <div className="text-center space-y-2">
+                <div className="text-center space-y-2 relative">
                   <h2 className="text-2xl font-display font-bold dark:text-white">
                     {authMode === 'login' ? 'Welcome Back' : authMode === 'signup' ? 'Create Account' : 'Recover Password'}
                   </h2>
@@ -932,6 +1066,7 @@ export default function App() {
                       <input 
                         required
                         type="email" 
+                        inputMode="email"
                         placeholder="john@example.com"
                         className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all"
                         value={authForm.email}
@@ -958,6 +1093,7 @@ export default function App() {
                           <input 
                             required
                             type="tel" 
+                            inputMode="tel"
                             placeholder="Phone number..."
                             className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 transition-all"
                             value={authForm.phone}
@@ -998,10 +1134,18 @@ export default function App() {
                           <label className="text-sm font-bold uppercase tracking-wider">Pin Your Location (Required)</label>
                         </div>
                         <div className="rounded-2xl overflow-hidden border-2 border-sky-100 dark:border-sky-900/30 shadow-inner">
-                          <MapPicker 
-                            onLocationSelect={(lat, lng, name) => setAuthForm({...authForm, lat, lng, location_name: name || ''})} 
+                          <MapPicker
+                            initialPos={(authForm.lat && authForm.lng) ? [authForm.lat, authForm.lng] : undefined}
+                            onLocationSelect={(lat, lng, name) => setAuthForm(prev => ({ 
+                              ...prev, 
+                              lat, 
+                              lng, 
+                              location_name: name || '',
+                              address: name || prev.address
+                            }))}
                           />
                         </div>
+
                         {authForm.location_name && (
                           <p className="text-xs text-zinc-500 dark:text-zinc-400 italic bg-zinc-50 dark:bg-zinc-950 p-2 rounded-lg">
                             Selected: {authForm.location_name}
@@ -1124,6 +1268,7 @@ export default function App() {
                       <input 
                         required
                         type="email" 
+                        inputMode="email"
                         className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none"
                         value={authForm.email}
                         onChange={e => setAuthForm({...authForm, email: e.target.value})}
@@ -1134,6 +1279,7 @@ export default function App() {
                       <input 
                         required
                         type="tel" 
+                        inputMode="tel"
                         className="w-full px-4 py-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 dark:bg-zinc-950 dark:text-white focus:outline-none"
                         value={authForm.phone}
                         onChange={e => setAuthForm({...authForm, phone: e.target.value})}
@@ -1166,10 +1312,72 @@ export default function App() {
 
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-zinc-500 dark:text-zinc-400 uppercase ml-1">Update Your Saved Location</label>
-                    <MapPicker 
+                    <MapPicker
                       initialPos={(user?.lat && user?.lng) ? [user.lat, user.lng] : undefined}
-                      onLocationSelect={(lat, lng, name) => setAuthForm({...authForm, lat, lng, location_name: name || ''})} 
+                      onLocationSelect={(lat, lng, name) => setAuthForm(prev => ({ 
+                        ...prev, 
+                        lat, 
+                        lng, 
+                        location_name: name || '',
+                        address: name || prev.address
+                      }))}
                     />
+
+                  </div>
+
+                  <div className="space-y-4 pt-4 border-t border-zinc-100 dark:border-zinc-800">
+                    <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">Notification Preferences</h3>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-950 rounded-2xl border border-zinc-200 dark:border-zinc-800">
+                        <div className="flex items-center gap-3">
+                          <div className="bg-sky-100 dark:bg-sky-900/30 p-2 rounded-xl text-sky-600 dark:text-sky-400">
+                            <Smartphone className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold dark:text-white">Push Notifications</p>
+                            <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Updates on order status</p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => { hapticClick(); setNotifSettings({ ...notifSettings, push: !notifSettings.push }); }}
+                          className={cn(
+                            "w-12 h-6 rounded-full transition-all relative",
+                            notifSettings.push ? "bg-sky-600" : "bg-zinc-300 dark:bg-zinc-700"
+                          )}
+                        >
+                          <div className={cn(
+                            "absolute top-1 w-4 h-4 bg-white rounded-full transition-all",
+                            notifSettings.push ? "left-7" : "left-1"
+                          )} />
+                        </button>
+                      </div>
+
+                      <div className="flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-950 rounded-2xl border border-zinc-200 dark:border-zinc-800">
+                        <div className="flex items-center gap-3">
+                          <div className="bg-emerald-100 dark:bg-emerald-900/30 p-2 rounded-xl text-emerald-600 dark:text-emerald-400">
+                            <MessageSquare className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold dark:text-white">WhatsApp Updates</p>
+                            <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Direct updates via WhatsApp</p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => { hapticClick(); setNotifSettings({ ...notifSettings, whatsapp: !notifSettings.whatsapp }); }}
+                          className={cn(
+                            "w-12 h-6 rounded-full transition-all relative",
+                            notifSettings.whatsapp ? "bg-emerald-600" : "bg-zinc-300 dark:bg-zinc-700"
+                          )}
+                        >
+                          <div className={cn(
+                            "absolute top-1 w-4 h-4 bg-white rounded-full transition-all",
+                            notifSettings.whatsapp ? "left-7" : "left-1"
+                          )} />
+                        </button>
+                      </div>
+                    </div>
                   </div>
 
                   <button 
@@ -1181,7 +1389,7 @@ export default function App() {
 
                   <button 
                     type="button"
-                    onClick={() => { hapticClick(); handleLogout(); }}
+                    onClick={() => { hapticClick(); setShowLogoutConfirm(true); }}
                     className="w-full mt-4 flex items-center justify-center gap-2 py-4 border border-red-200 dark:border-red-900/30 text-red-600 dark:text-red-400 rounded-2xl font-bold hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                   >
                     <LogOut className="w-5 h-5" />
@@ -1201,17 +1409,33 @@ export default function App() {
               transition={{ type: "spring", damping: 25, stiffness: 200 }}
               className="space-y-6"
             >
-              <div className="flex items-center gap-4 mb-6">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-4">
+                  <button 
+                    onClick={() => { hapticClick(); setView('home'); }}
+                    className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors"
+                  >
+                    <ChevronRight className="w-6 h-6 rotate-180 dark:text-zinc-400" />
+                  </button>
+                  <h2 className="text-2xl font-display font-bold dark:text-white">Order History</h2>
+                </div>
                 <button 
-                  onClick={() => { hapticClick(); setView('home'); }}
-                  className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors"
+                  onClick={handleRefresh}
+                  disabled={isRefreshing}
+                  className={cn(
+                    "p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-all",
+                    isRefreshing && "animate-spin"
+                  )}
                 >
-                  <ChevronRight className="w-6 h-6 rotate-180 dark:text-zinc-400" />
+                  <RefreshCw className="w-5 h-5 text-zinc-500" />
                 </button>
-                <h2 className="text-2xl font-display font-bold dark:text-white">Order History</h2>
               </div>
 
-              {orderHistory.length === 0 ? (
+              {loading && orderHistory.length === 0 ? (
+                <div className="space-y-3">
+                  {[1, 2, 3, 4, 5].map(i => <OrderSkeleton key={i} />)}
+                </div>
+              ) : orderHistory.length === 0 ? (
                 <div className="bg-white dark:bg-zinc-900 p-12 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm text-center space-y-4">
                   <div className="bg-zinc-50 dark:bg-zinc-950 w-16 h-16 rounded-full flex items-center justify-center mx-auto">
                     <History className="text-zinc-300 dark:text-zinc-700 w-8 h-8" />
@@ -1281,7 +1505,9 @@ export default function App() {
                 <h2 className="text-2xl font-display font-bold dark:text-white">Track Order</h2>
               </div>
 
-              {!trackingOrder ? (
+              {loading && !trackingOrder ? (
+                <TrackingSkeleton />
+              ) : !trackingOrder ? (
                 <div className="bg-white dark:bg-zinc-900 p-8 rounded-3xl border border-zinc-200 dark:border-zinc-800 shadow-sm text-center space-y-6">
                   <div className="bg-zinc-50 dark:bg-zinc-950 w-20 h-20 rounded-full flex items-center justify-center mx-auto">
                     <History className="text-zinc-400 dark:text-zinc-600 w-10 h-10" />
@@ -1324,6 +1550,15 @@ export default function App() {
                         <p className="text-sm font-bold text-sky-600 dark:text-sky-400">TSh {Math.round(trackingOrder.total_price)}</p>
                       </div>
                     </div>
+                    
+                    <button 
+                      onClick={() => { hapticClick(); setShowReceipt(trackingOrder); }}
+                      className="w-full flex items-center justify-center gap-2 py-3 bg-zinc-50 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 rounded-2xl font-bold hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors mt-4"
+                    >
+                      <FileText className="w-4 h-4" />
+                      View Detailed Receipt
+                    </button>
+
                     {trackingOrder.status === 'Pending' && (
                       <div className="flex flex-col gap-2 mt-4">
                         <button 
@@ -1348,7 +1583,7 @@ export default function App() {
                           Edit Order
                         </button>
                         <button 
-                          onClick={() => { hapticClick(); handleCancelOrder(trackingOrder.id); }}
+                          onClick={() => { hapticClick(); setShowCancelConfirm(trackingOrder.id); }}
                           className="w-full flex items-center justify-center gap-2 py-3 border border-red-200 dark:border-red-900/30 text-red-600 dark:text-red-400 rounded-2xl font-bold hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                         >
                           <XCircle className="w-4 h-4" />
@@ -1427,35 +1662,136 @@ export default function App() {
         </nav>
       )}
 
-      <footer className="bg-zinc-900 dark:bg-black text-white p-8 pb-32 transition-colors">
-        <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8">
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <BubblesIcon className="w-8 h-8" />
-              <h2 className="text-xl font-display font-bold uppercase tracking-widest">bubbletz</h2>
+      {view !== 'landing' && (
+        <footer className="bg-zinc-900 dark:bg-black text-white p-8 pb-32 transition-colors">
+          <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <BubblesIcon className="w-8 h-8" />
+                <h2 className="text-xl font-display font-bold uppercase tracking-widest">bubbletz</h2>
+              </div>
+              <p className="text-zinc-400 text-sm max-w-xs">
+                Dar es Salaam's most reliable laundry service. We take care of your clothes so you can take care of your life.
+              </p>
             </div>
-            <p className="text-zinc-400 text-sm max-w-xs">
-              Dar es Salaam's most reliable laundry service. We take care of your clothes so you can take care of your life.
-            </p>
-          </div>
-          <div className="space-y-4">
-            <h3 className="font-bold text-sm uppercase tracking-wider text-zinc-500">Contact Us</h3>
-            <div className="space-y-2">
-              <a href="mailto:bubblestzlaundry@gmail.com" className="flex items-center gap-2 text-zinc-300 hover:text-sky-400 transition-colors">
-                <Mail className="w-4 h-4" />
-                bubblestzlaundry@gmail.com
-              </a>
-              <div className="flex items-center gap-2 text-zinc-300">
-                <MapPin className="w-4 h-4" />
-                Dar es Salaam, Tanzania
+            <div className="space-y-4">
+              <h3 className="font-bold text-sm uppercase tracking-wider text-zinc-500">Contact Us</h3>
+              <div className="space-y-2">
+                <a href="mailto:bubblestzlaundry@gmail.com" className="flex items-center gap-2 text-zinc-300 hover:text-sky-400 transition-colors">
+                  <Mail className="w-4 h-4" />
+                  bubblestzlaundry@gmail.com
+                </a>
+                <div className="flex items-center gap-2 text-zinc-300">
+                  <MapPin className="w-4 h-4" />
+                  Dar es Salaam, Tanzania
+                </div>
               </div>
             </div>
           </div>
-        </div>
-        <div className="max-w-4xl mx-auto mt-12 pt-8 border-t border-white/10 text-center text-zinc-500 text-xs">
-          © {new Date().getFullYear()} REBI group. All rights reserved.
-        </div>
-      </footer>
+          <div className="max-w-4xl mx-auto mt-12 pt-8 border-t border-white/10 text-center text-zinc-500 text-xs">
+            © {new Date().getFullYear()} REBI group. All rights reserved.
+          </div>
+        </footer>
+      )}
+
+      {/* New Components */}
+      <SupportChat />
+
+      <AnimatePresence>
+        {showOnboarding && (
+          <OnboardingGuide onComplete={() => setShowOnboarding(false)} />
+        )}
+      </AnimatePresence>
+
+      <ConfirmationModal
+        isOpen={showLogoutConfirm}
+        onClose={() => setShowLogoutConfirm(false)}
+        onConfirm={handleLogout}
+        variant="danger"
+        title="Logout"
+        message="Are you sure you want to logout? You'll need to login again to access your orders."
+        confirmLabel="Logout"
+      />
+
+      <ConfirmationModal
+        isOpen={!!showCancelConfirm}
+        onClose={() => setShowCancelConfirm(null)}
+        onConfirm={() => showCancelConfirm && handleCancelOrder(showCancelConfirm)}
+        variant="danger"
+        title="Cancel Order"
+        message="Are you sure you want to cancel this order? This action cannot be undone."
+        confirmLabel="Yes, Cancel Order"
+      />
+
+      {/* Receipt Modal */}
+      <AnimatePresence>
+        {showReceipt && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowReceipt(null)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative bg-white dark:bg-zinc-900 w-full max-w-sm rounded-[32px] overflow-hidden shadow-2xl border border-zinc-200 dark:border-zinc-800"
+            >
+              <div className="bg-sky-600 p-6 text-white text-center space-y-2">
+                <div className="bg-white/20 w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-2">
+                  <ShieldCheck className="w-6 h-6" />
+                </div>
+                <h3 className="text-xl font-bold">Order Receipt</h3>
+                <p className="text-sky-100 text-xs font-mono uppercase tracking-widest">{showReceipt.id}</p>
+              </div>
+
+              <div className="p-6 space-y-6">
+                <div className="space-y-4">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-zinc-500 dark:text-zinc-400">Date</span>
+                    <span className="font-bold dark:text-white">{new Date(showReceipt.created_at).toLocaleDateString()}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-zinc-500 dark:text-zinc-400">Status</span>
+                    <span className="font-bold text-sky-600 dark:text-sky-400">{showReceipt.status}</span>
+                  </div>
+                </div>
+
+                <div className="border-t border-dashed border-zinc-200 dark:border-zinc-800 pt-6 space-y-3">
+                  <div className="flex justify-between text-sm">
+                    <span className="dark:text-zinc-300">Normal Clothes ({showReceipt.clothes_weight}kg)</span>
+                    <span className="font-bold dark:text-white">TSh {(showReceipt.clothes_weight * (isWeekend ? PRICING.NORMAL.SATURDAY : PRICING.NORMAL.REGULAR)).toLocaleString()}</span>
+                  </div>
+                  {showReceipt.blankets_count > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="dark:text-zinc-300">Blankets ({showReceipt.blankets_count})</span>
+                      <span className="font-bold dark:text-white">TSh {(showReceipt.blankets_count * (isWeekend ? PRICING.BLANKET.SATURDAY : PRICING.BLANKET.REGULAR)).toLocaleString()}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="bg-zinc-50 dark:bg-zinc-950 p-4 rounded-2xl space-y-2 border border-zinc-100 dark:border-zinc-800">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-bold text-zinc-500 uppercase">Total Amount</span>
+                    <span className="text-xl font-display font-bold text-sky-600 dark:text-sky-400">TSh {showReceipt.total_price.toLocaleString()}</span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setShowReceipt(null)}
+                  className="w-full bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 py-4 rounded-2xl font-bold active:scale-95 transition-all"
+                >
+                  Close Receipt
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
     </div>
   );
 }

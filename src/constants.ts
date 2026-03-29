@@ -39,9 +39,9 @@ export function calculatePrice(weight: number, blankets: number) {
   const isPromo = isPromotionDay();
   
   // Weights: 
-  // Normal clothes: 9,999 TSh
-  // Blankets: 1,499 TSh
-  // Weekend discount (Sat/Sun): 25% (0.75 multiplier applied to rates in PRICING)
+  // Normal clothes: 10,000 TSh
+  // Blankets: 15,000 TSh
+  // Weekend discount (Sat/Sun): 25%
   // Weight-based discount: 2% for each 10kg (0.98 multiplier per 10kg)
   
   const clothesRate = isPromo ? PRICING.NORMAL.SATURDAY : PRICING.NORMAL.REGULAR;
