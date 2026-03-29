@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, CircleMarker, useMapEvents, useMap, Tooltip } 
 import { TANZANIA_BOUNDS } from '../constants';
 import { Navigation, MapPin, Loader2 } from 'lucide-react';
 import { Geolocation } from '@capacitor/geolocation';
+import { Capacitor } from '@capacitor/core';
 
 interface MapPickerProps {
   onLocationSelect: (lat: number, lng: number, name?: string) => void;
@@ -29,12 +30,12 @@ async function getAddress(lat: number, lng: number) {
  */
 async function getIpLocation() {
   try {
-    const response = await fetch('http://ip-api.com/json');
+    const response = await fetch('https://ipapi.co/json/');
     const data = await response.json();
-    if (data && data.status === 'success') {
+    if (data && !data.error) {
       return {
-        latitude: data.lat,
-        longitude: data.lon
+        latitude: data.latitude,
+        longitude: data.longitude
       };
     }
     return null;
@@ -105,9 +106,11 @@ export default function MapPicker({ onLocationSelect, initialPos }: MapPickerPro
     
     try {
       // 1. Try standard browser/device geolocation
-      const status = await Geolocation.checkPermissions();
-      if (status.location !== 'granted') {
-        await Geolocation.requestPermissions();
+      if (Capacitor.isNativePlatform()) {
+        const status = await Geolocation.checkPermissions();
+        if (status.location !== 'granted') {
+          await Geolocation.requestPermissions();
+        }
       }
 
       let position;

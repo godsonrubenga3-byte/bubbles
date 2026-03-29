@@ -27,7 +27,11 @@ export function isPromotionDay() {
   return day === 6 || day === 0; // Saturday (6) or Sunday (0)
 }
 
-const defaultApiUrl = Capacitor.isNativePlatform() ? 'https://bubblestz.vercel.app' : 'http://localhost:3000';
+const defaultApiUrl = Capacitor.isNativePlatform() 
+  ? 'https://bubblestz.vercel.app' 
+  : (typeof window !== 'undefined' && window.location.hostname !== 'localhost' 
+    ? window.location.origin 
+    : 'http://localhost:3000');
 export const API_BASE_URL = import.meta.env.VITE_API_URL || defaultApiUrl;
 
 export function getApiUrl(path: string) {
