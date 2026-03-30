@@ -26,16 +26,17 @@ interface MapPickerProps {
 
 async function getAddress(lat: number, lng: number) {
   try {
+    // Adding User-Agent as required by OpenStreetMap Nominatim Usage Policy
     const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`, {
       headers: {
         'User-Agent': 'bubbletz-laundry-app'
       }
     });
     const data = await response.json();
-    return data.display_name || `Location: ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+    return data.display_name || `Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
   } catch (error) {
     console.error("Geocoding error:", error);
-    return `Location: ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+    return `Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
   }
 }
 
@@ -60,10 +61,12 @@ async function getIpLocation() {
 }
 
 function LocationMarker({ onLocationSelect, initialPos }: MapPickerProps) {
+  // CRITICAL: Prevent starting at [0,0] (Null Island)
   const hasValidPos = initialPos && initialPos[0] !== 0 && initialPos[1] !== 0;
   const [position, setPosition] = useState<L.LatLng | null>(hasValidPos ? L.latLng(initialPos[0], initialPos[1]) : null);
   const map = useMap();
 
+  // Update position when initialPos prop changes
   useEffect(() => {
     if (initialPos && initialPos[0] !== 0) {
       const latlng = L.latLng(initialPos[0], initialPos[1]);
@@ -72,6 +75,7 @@ function LocationMarker({ onLocationSelect, initialPos }: MapPickerProps) {
     }
   }, [initialPos, map]);
 
+  // Listen for internal fly-to events (for auto-detect)
   useEffect(() => {
     const handleFlyTo = (e: any) => {
       const { lat, lng } = e.detail;
@@ -109,11 +113,12 @@ export default function MapPicker({ onLocationSelect, initialPos }: MapPickerPro
     console.log("Starting tiered auto-detect...");
     
     try {
+      // 1. Handle Native Permissions (Fixed for Vercel/Web compatibility)
       if (Capacitor.isNativePlatform()) {
-        const status = await Geolocation.checkPermissions();
-        if (status.location !== 'granted') {
-          const reqStatus = await Geolocation.requestPermissions();
-          if (reqStatus.location !== 'granted') {
+        const permission = await Geolocation.checkPermissions();
+        if (permission.location !== 'granted') {
+          const request = await Geolocation.requestPermissions();
+          if (request.location !== 'granted') {
             throw new Error("Permission denied");
           }
         }
@@ -123,7 +128,7 @@ export default function MapPicker({ onLocationSelect, initialPos }: MapPickerPro
       let lng: number = 0;
       let isEstimate = false;
 
-      // 1. Try High Accuracy
+      // 2. Try High Accuracy (GPS)
       try {
         const position = await Geolocation.getCurrentPosition({
           enableHighAccuracy: true,
@@ -134,7 +139,7 @@ export default function MapPicker({ onLocationSelect, initialPos }: MapPickerPro
         lng = position.coords.longitude;
       } catch (e) {
         console.warn("High accuracy failed, trying standard...");
-        // 2. Try Standard Accuracy
+        // 3. Try Standard Accuracy
         try {
           const position = await Geolocation.getCurrentPosition({
             enableHighAccuracy: false,
@@ -145,7 +150,7 @@ export default function MapPicker({ onLocationSelect, initialPos }: MapPickerPro
           lng = position.coords.longitude;
         } catch (e2) {
           console.warn("Standard accuracy failed, trying IP fallback...");
-          // 3. Try IP Fallback
+          // 4. IP fallback (Final attempt)
           const ipLoc = await getIpLocation();
           if (ipLoc) {
             lat = ipLoc.latitude;
@@ -159,11 +164,7 @@ export default function MapPicker({ onLocationSelect, initialPos }: MapPickerPro
 
       // Verification
       if (lat === 0 || lng === 0) throw new Error("Invalid coordinates");
-
-      if (isEstimate) {
-        console.log("Using approximate IP location");
-      }
-
+      
       const name = await getAddress(lat, lng);
       onLocationSelect(lat, lng, isEstimate ? `(Approx) ${name}` : name);
       window.dispatchEvent(new CustomEvent('map-fly-to', { detail: { lat, lng } }));
@@ -173,8 +174,11 @@ export default function MapPicker({ onLocationSelect, initialPos }: MapPickerPro
       }
 
     } catch (error: any) {
-      console.error("Auto-detect failed:", error);
-      alert("We couldn't find your location automatically. Please tap your pickup spot on the map!");
+      console.error("Geolocation error:", error);
+      let msg = "Unable to retrieve your location. Please tap the map manually.";
+      if (error.message?.includes("denied")) msg = "Location permission denied. Please enable location access in settings.";
+      
+      alert(msg);
     } finally {
       setLocating(false);
     }

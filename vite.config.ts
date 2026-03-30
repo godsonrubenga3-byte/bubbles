@@ -46,32 +46,12 @@ export default defineConfig(({ mode }) => {
           icons: [
             {
               src: 'images/logo.png',
-              sizes: '36x36',
-              type: 'image/png'
-            },
-            {
-              src: 'images/logo.png',
-              sizes: '48x48',
-              type: 'image/png'
-            },
-            {
-              src: 'images/logo.png',
-              sizes: '72x72',
-              type: 'image/png'
-            },
-            {
-              src: 'images/logo.png',
-              sizes: '96x96',
-              type: 'image/png'
-            },
-            {
-              src: 'images/logo.png',
-              sizes: '144x144',
-              type: 'image/png'
-            },
-            {
-              src: 'images/logo.png',
               sizes: '192x192',
+              type: 'image/png'
+            },
+            {
+              src: 'images/logo.png',
+              sizes: '512x512',
               type: 'image/png'
             }
           ]

@@ -36,6 +36,18 @@ This document outlines the operational logic of the Bubbletz Laundry application
 - **Vercel Deployment:** Configured via `vercel.json` to handle rewrites for the SPA (Single Page Application) routing.
 - **Socket.io:** Maintained as a secondary option, but Polling is the primary robust method for Vercel's serverless environment.
 
-## 4. ANDROID APK BUILD (PROPRIETARY)
+## 4. APP ICON & FAVICON
+- **Source:** The official logo is located at `public/images/logo.png`.
+- **Web/PWA:** The app is configured to use this logo for all favicons, apple-touch-icons, and manifest icons.
+- **Android APK Icon:** To update the official APK icon using the logo, follow these steps in Android Studio:
+  1. Open the `android` folder in Android Studio.
+  2. Right-click the `app` folder -> `New` -> `Image Asset`.
+  3. Set `Icon Type` to `Launcher Icons (Adaptive and Legacy)`.
+  4. In `Path`, select your `public/images/logo.png`.
+  5. Adjust the scale so the logo fits perfectly within the safe zone.
+  6. Click `Next` -> `Finish`.
+  7. Re-run `./gradlew assembleDebug` to generate the new APK with the updated icon.
+
+## 5. ANDROID APK BUILD (PROPRIETARY)
 - To build the APK, run: `npm run apk:build`
 - This script builds the Vite web assets, syncs them to the Capacitor Android project, and compiles the Gradle project.
